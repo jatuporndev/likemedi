@@ -5,3 +5,4 @@ config/eos.local.json
 eosg*.zip
 _eosg_extract/
 /docs/
+/*.exe
