@@ -1,0 +1,13 @@
+{
+  "product_name": "likemedieval",
+  "product_version": "0.1.0",
+  "product_id": "YOUR_PRODUCT_ID",
+  "sandbox_id": "YOUR_SANDBOX_ID",
+  "deployment_id": "YOUR_DEPLOYMENT_ID",
+  "client_id": "YOUR_CLIENT_ID",
+  "client_secret": "YOUR_CLIENT_SECRET",
+  "encryption_key": "YOUR_64_CHARACTER_ENCRYPTION_KEY",
+  "login_method": "anonymous",
+  "devtool_host": "localhost:4545",
+  "devtool_credential_name": "Player1"
+}
