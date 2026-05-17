@@ -1,5 +1,6 @@
 extends RefCounted
 
+const PLAYER_DECKS_CONFIG_PATH := "res://config/player_decks.json"
 const MAX_HAND_SIZE := 5
 
 var draw_pile: Array[String] = []
@@ -10,23 +11,9 @@ var is_waiting_to_draw_after_shuffle := false
 
 
 func setup_default_deck() -> void:
-	draw_pile = [
-		"strike",
-		"strike",
-		"strike",
-		"strike",
-		"strike",
-		"strike",
-		"strike",
-		"strike",
-		"strike",
-		"strike",
-		"fireball",
-		"fireball",
-		"fireball",
-		"fireball",
-		"fireball",
-	]
+	draw_pile = _load_deck("default")
+	if draw_pile.is_empty():
+		draw_pile = ["strike"]
 	draw_pile.shuffle()
 	discard_pile.clear()
 	hand.clear()
@@ -87,3 +74,27 @@ func draw_pile_count() -> int:
 
 func discard_pile_count() -> int:
 	return discard_pile.size()
+
+
+func _load_deck(deck_id: String) -> Array[String]:
+	if not FileAccess.file_exists(PLAYER_DECKS_CONFIG_PATH):
+		push_warning("Player deck config not found: %s" % PLAYER_DECKS_CONFIG_PATH)
+		return []
+
+	var parsed = JSON.parse_string(FileAccess.get_file_as_string(PLAYER_DECKS_CONFIG_PATH))
+	if not (parsed is Dictionary):
+		push_warning("Player deck config is not a dictionary: %s" % PLAYER_DECKS_CONFIG_PATH)
+		return []
+	if not parsed.has(deck_id):
+		push_warning("Deck id '%s' not found in %s" % [deck_id, PLAYER_DECKS_CONFIG_PATH])
+		return []
+
+	var raw_deck = parsed[deck_id]
+	if not (raw_deck is Array):
+		push_warning("Deck id '%s' is not an array." % deck_id)
+		return []
+
+	var deck: Array[String] = []
+	for skill_name in raw_deck:
+		deck.append(str(skill_name))
+	return deck

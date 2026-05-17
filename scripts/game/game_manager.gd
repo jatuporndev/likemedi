@@ -29,6 +29,10 @@ func request_initial_state() -> void:
 		var data: Dictionary = _known_players[peer_id]
 		spawn_player.rpc_id(requester_id, peer_id, data["name"], data["position"])
 
+	var world := get_parent()
+	if world != null and world.has_method("sync_enemies_to_peer"):
+		world.call("sync_enemies_to_peer", requester_id)
+
 	_add_player(requester_id, requested_name)
 
 
@@ -72,18 +76,26 @@ func _on_peer_left(peer_id: int) -> void:
 		despawn_player.rpc(peer_id)
 
 
-func request_local_skill(skill_name: String) -> bool:
+func request_local_skill(skill_name: String, target_peer_id: int = -1) -> bool:
 	var player := _get_local_player()
 	if player == null:
 		return false
 
-	if skill_name == "fireball" and player.has_method("try_fireball"):
-		player.try_fireball()
+	if player.has_method("try_skill"):
+		player.try_skill(skill_name, target_peer_id)
 		return true
 	if player.has_method("try_attack"):
 		player.try_attack()
 		return true
 	return false
+
+
+func set_local_stamina_bar(current_value: float, max_value: float) -> void:
+	var player := _get_local_player()
+	if player == null or not player.has_method("set_stamina_bar"):
+		return
+
+	player.set_stamina_bar(current_value, max_value)
 
 
 func _get_local_player() -> Node:

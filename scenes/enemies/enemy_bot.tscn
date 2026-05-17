@@ -1,0 +1,32 @@
+[gd_scene load_steps=6 format=3]
+
+[ext_resource type="Script" path="res://scripts/enemies/enemy_bot.gd" id="1_enemy_bot"]
+[ext_resource type="Texture2D" path="res://sprites/enemis/e1/Run.png" id="2_run"]
+[ext_resource type="Texture2D" path="res://sprites/enemis/e1/Attack1.png" id="3_attack"]
+[ext_resource type="Texture2D" path="res://sprites/enemis/e1/Idle.png" id="4_idle"]
+
+[sub_resource type="CapsuleShape2D" id="CapsuleShape2D_enemy"]
+radius = 12.0
+height = 34.0
+
+[node name="EnemyBot" type="CharacterBody2D"]
+script = ExtResource("1_enemy_bot")
+idle_texture = ExtResource("4_idle")
+run_texture = ExtResource("2_run")
+attack_texture = ExtResource("3_attack")
+
+[node name="Sprite2D" type="Sprite2D" parent="."]
+texture = ExtResource("4_idle")
+hframes = 11
+
+[node name="CollisionShape2D" type="CollisionShape2D" parent="."]
+position = Vector2(0, 34)
+shape = SubResource("CapsuleShape2D_enemy")
+
+[node name="HealthBar" type="ProgressBar" parent="."]
+offset_left = -30.0
+offset_top = 54.0
+offset_right = 30.0
+offset_bottom = 58.0
+value = 60.0
+show_percentage = false

@@ -9,6 +9,8 @@ script = ExtResource("1_world")
 
 [node name="Players" type="Node2D" parent="."]
 
+[node name="Enemies" type="Node2D" parent="."]
+
 [node name="GameManager" type="Node" parent="."]
 script = ExtResource("2_game_manager")
 

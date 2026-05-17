@@ -1,0 +1,20 @@
+{
+  "e1": {
+    "speed": 105.0,
+    "attack_range": 46.0,
+    "attack_damage": 12,
+    "attack_cooldown": 1.2,
+    "aggro_range": 230.0,
+    "give_up_range": 340.0,
+    "give_up_seconds": 0.6,
+    "wander_radius": 120.0,
+    "wander_speed": 42.0,
+    "max_health": 60,
+    "idle_fps": 5.0,
+    "run_fps": 10.0,
+    "attack_fps": 14.0,
+    "idle_frames": 11,
+    "run_frames": 8,
+    "attack_frames": 7
+  }
+}
