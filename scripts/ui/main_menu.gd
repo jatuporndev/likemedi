@@ -81,7 +81,7 @@ func _build_ui() -> void:
 
 	var quit_button := Button.new()
 	quit_button.text = "Quit"
-	quit_button.pressed.connect(Callable(get_tree(), "quit"))
+	quit_button.pressed.connect(NetworkManager.quit_game)
 	layout.add_child(quit_button)
 
 	_status_label = Label.new()

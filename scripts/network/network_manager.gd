@@ -14,8 +14,12 @@ const EOS_TRANSPORT_PATH := "res://scripts/network/transports/eos_transport.gd"
 var player_names: Dictionary = {}
 var last_error := ""
 var transport_mode := "enet"
+var server_name := "Local Server"
+var dedicated_server_enabled := false
 
 var _transport: NetworkTransport
+var _is_quitting := false
+var _network_shutdown_done := false
 
 
 func _ready() -> void:
@@ -25,7 +29,15 @@ func _ready() -> void:
 	multiplayer.peer_disconnected.connect(_on_peer_disconnected)
 
 
+func _notification(what: int) -> void:
+	if what == NOTIFICATION_WM_CLOSE_REQUEST:
+		quit_game()
+	elif what == NOTIFICATION_PREDELETE:
+		_shutdown_network()
+
+
 func host_game(player_name := "Host") -> void:
+	dedicated_server_enabled = false
 	player_name = _clean_player_name(player_name, "Host")
 	_ensure_transport()
 	var error: Error = await _transport.create_room(player_name)
@@ -36,7 +48,21 @@ func host_game(player_name := "Host") -> void:
 	get_tree().change_scene_to_file(WORLD_SCENE)
 
 
+func host_dedicated_server(p_server_name := "Local Server") -> void:
+	dedicated_server_enabled = true
+	server_name = _clean_player_name(p_server_name, "Local Server")
+	_ensure_transport()
+	var error: Error = await _transport.create_room(server_name)
+	if error != OK:
+		dedicated_server_enabled = false
+		return
+
+	player_names = {}
+	get_tree().change_scene_to_file(WORLD_SCENE)
+
+
 func join_game(address: String, player_name := "Player") -> void:
+	dedicated_server_enabled = false
 	player_name = _clean_player_name(player_name, "Player")
 	_ensure_transport()
 	player_names = {0: player_name}
@@ -50,8 +76,21 @@ func leave_game() -> void:
 	get_tree().change_scene_to_file(MENU_SCENE)
 
 
+func quit_game() -> void:
+	if _is_quitting:
+		return
+
+	_is_quitting = true
+	_shutdown_network()
+	get_tree().quit()
+
+
 func is_host() -> bool:
 	return multiplayer.multiplayer_peer != null and multiplayer.is_server()
+
+
+func is_dedicated_server() -> bool:
+	return dedicated_server_enabled and is_host()
 
 
 func set_transport_mode(mode: String) -> void:
@@ -135,6 +174,17 @@ func _close_peer() -> void:
 		if multiplayer.multiplayer_peer != null:
 			multiplayer.multiplayer_peer.close()
 		multiplayer.multiplayer_peer = null
+
+
+func _shutdown_network() -> void:
+	if _network_shutdown_done:
+		return
+
+	_network_shutdown_done = true
+	_close_peer()
+	if ClassDB.class_exists("EOSGMultiplayerPeer"):
+		EOS.Platform.PlatformInterface.release()
+		EOS.Platform.PlatformInterface.shutdown()
 
 
 func _clean_player_name(player_name: String, fallback: String) -> String:

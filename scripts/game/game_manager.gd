@@ -11,7 +11,8 @@ func _ready() -> void:
 	NetworkManager.peer_left.connect(_on_peer_left)
 
 	if multiplayer.is_server():
-		_add_player(1, str(NetworkManager.player_names.get(1, "Host")))
+		if not NetworkManager.is_dedicated_server():
+			_add_player(1, str(NetworkManager.player_names.get(1, "Host")))
 	else:
 		request_initial_state.rpc_id(1)
 
@@ -69,3 +70,21 @@ func _on_peer_left(peer_id: int) -> void:
 	if multiplayer.is_server():
 		_known_players.erase(peer_id)
 		despawn_player.rpc(peer_id)
+
+
+func request_local_skill(skill_name: String) -> bool:
+	var player := _get_local_player()
+	if player == null:
+		return false
+
+	if skill_name == "fireball" and player.has_method("try_fireball"):
+		player.try_fireball()
+		return true
+	if player.has_method("try_attack"):
+		player.try_attack()
+		return true
+	return false
+
+
+func _get_local_player() -> Node:
+	return players.get_node_or_null(str(multiplayer.get_unique_id()))
