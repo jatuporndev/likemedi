@@ -1,6 +1,7 @@
 extends CharacterBody2D
 
 const CONFIG_PATH := "res://config/enemies.json"
+const FLOATING_COMBAT_TEXT := preload("res://scripts/effects/floating_combat_text.gd")
 
 @export var enemy_id := "e1"
 @export var speed := 105.0
@@ -30,10 +31,15 @@ const WANDER_WAIT_MIN := 1.2
 const WANDER_WAIT_MAX := 3.0
 const WANDER_MOVE_MIN := 1.0
 const WANDER_MOVE_MAX := 2.4
+const STUN_SECONDS := 0.3
+const DRAW_ORDER_FOOT_OFFSET := 34.0
+const DRAW_ORDER_MIN := -4096
+const DRAW_ORDER_MAX := 4096
 
 var _health := 60
 var _attack_time := 0.0
 var _attack_cooldown_time := 0.0
+var _stun_time := 0.0
 var _give_up_time := 0.0
 var _wander_time := 0.0
 var _wait_time := 0.0
@@ -48,8 +54,13 @@ var _rng := RandomNumberGenerator.new()
 
 
 func _ready() -> void:
+	motion_mode = CharacterBody2D.MOTION_MODE_FLOATING
+	platform_floor_layers = 0
+	platform_wall_layers = 0
 	_apply_enemy_config()
 	add_to_group("damageable")
+	z_as_relative = false
+	_update_draw_order()
 	_rng.randomize()
 	_home_position = global_position
 	_wait_time = _rng.randf_range(WANDER_WAIT_MIN, WANDER_WAIT_MAX)
@@ -66,15 +77,24 @@ func _physics_process(delta: float) -> void:
 		_attack_time = max(_attack_time - delta, 0.0)
 	if _attack_cooldown_time > 0.0:
 		_attack_cooldown_time = max(_attack_cooldown_time - delta, 0.0)
+	if _stun_time > 0.0:
+		_stun_time = max(_stun_time - delta, 0.0)
 
 	if multiplayer.is_server():
 		_update_server_ai(delta)
 		_sync_state.rpc(position, _health, velocity, _facing_left, _attack_time)
 
+	_update_draw_order()
 	_update_animation(delta)
 
 
 func _update_server_ai(delta: float) -> void:
+	if _stun_time > 0.0:
+		velocity = Vector2.ZERO
+		_visual_velocity = velocity
+		move_and_slide()
+		return
+
 	if _target == null or not is_instance_valid(_target) or _is_dead_player(_target):
 		_target = _find_closest_player(aggro_range)
 		_give_up_time = 0.0
@@ -171,7 +191,7 @@ func _find_closest_player(max_range: float) -> Node2D:
 
 
 func _try_attack(target: Node) -> void:
-	if _attack_cooldown_time > 0.0 or _attack_time > 0.0:
+	if _attack_cooldown_time > 0.0 or _attack_time > 0.0 or _stun_time > 0.0:
 		return
 
 	_attack_time = float(attack_frame_count) / attack_fps
@@ -189,6 +209,7 @@ func _sync_state(
 	attack_time: float
 ) -> void:
 	position = server_position
+	_update_draw_order()
 	_health = server_health
 	_visual_velocity = server_velocity
 	_facing_left = facing_left
@@ -200,8 +221,16 @@ func _take_test_damage(amount: int, attacker: Node = null) -> void:
 	if not multiplayer.is_server() and multiplayer.multiplayer_peer != null:
 		return
 
+	var damage_dealt := mini(maxi(amount, 0), _health)
 	_health = maxi(_health - amount, 0)
 	health_bar.value = _health
+	if damage_dealt > 0:
+		if multiplayer.multiplayer_peer == null:
+			_show_damage_number(damage_dealt)
+		else:
+			_show_damage_number.rpc(damage_dealt)
+	if amount > 0:
+		_stun_time = max(_stun_time, STUN_SECONDS)
 	if attacker is Node2D:
 		_target = attacker as Node2D
 	elif _health > 0:
@@ -276,6 +305,22 @@ func _set_animation(animation_name: String) -> void:
 
 func _is_dead_player(player: Node) -> bool:
 	return int(player.get("_health")) <= 0
+
+
+@rpc("authority", "call_local", "reliable")
+func _show_damage_number(amount: int) -> void:
+	var parent := get_parent()
+	if parent == null:
+		parent = get_tree().current_scene
+	FLOATING_COMBAT_TEXT.spawn_damage(parent, global_position, amount)
+
+
+func _update_draw_order() -> void:
+	z_index = clampi(
+		int(round(global_position.y + DRAW_ORDER_FOOT_OFFSET)),
+		DRAW_ORDER_MIN,
+		DRAW_ORDER_MAX
+	)
 
 
 func _apply_enemy_config() -> void:

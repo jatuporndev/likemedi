@@ -4,6 +4,8 @@ const ENEMY_SCENE := preload("res://scenes/enemies/enemy_bot.tscn")
 const MAX_ENEMIES := 2
 const RESPAWN_SECONDS := 60.0
 const SPAWN_RECT := Rect2(Vector2(-620, -370), Vector2(1840, 1240))
+const DRAW_ORDER_MIN := -4096
+const ROCK_DRAW_ORDER_FOOT_OFFSET := 21.0
 
 @onready var enemies: Node2D = $Enemies
 
@@ -41,12 +43,16 @@ func _build_map() -> void:
 	ground.color = Color(0.18, 0.28, 0.18)
 	ground.size = Vector2(2000, 1400)
 	ground.position = Vector2(-700, -450)
+	ground.z_as_relative = false
+	ground.z_index = DRAW_ORDER_MIN
 	add_child(ground)
 	move_child(ground, 0)
 
 	for i in range(12):
 		var rock := StaticBody2D.new()
 		rock.position = Vector2(130 + (i % 4) * 190, 120 + (i / 4) * 180)
+		rock.z_as_relative = false
+		rock.z_index = int(round(rock.position.y + ROCK_DRAW_ORDER_FOOT_OFFSET))
 		add_child(rock)
 
 		var shape := CollisionShape2D.new()

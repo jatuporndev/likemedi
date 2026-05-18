@@ -4,6 +4,7 @@
 [ext_resource type="Texture2D" uid="uid://u5kjn5nm22o1" path="res://sprites/player/Idle.png" id="2_idle"]
 [ext_resource type="Texture2D" uid="uid://bkevoepfn5wlq" path="res://sprites/player/Run.png" id="3_run"]
 [ext_resource type="Texture2D" uid="uid://dqpoghhdybhl2" path="res://sprites/player/Attack1.png" id="4_attack"]
+[ext_resource type="Texture2D" uid="uid://c6o3hf7xqcn2m" path="res://sprites/player/Hurt.png" id="5_hurt"]
 
 [sub_resource type="CapsuleShape2D" id="CapsuleShape2D_player"]
 radius = 12.0
@@ -14,6 +15,7 @@ script = ExtResource("1_player")
 idle_texture = ExtResource("2_idle")
 run_texture = ExtResource("3_run")
 attack_texture = ExtResource("4_attack")
+hurt_texture = ExtResource("5_hurt")
 
 [node name="Sprite2D" type="Sprite2D" parent="." unique_id=1638438518]
 texture = ExtResource("2_idle")

@@ -38,11 +38,15 @@ var _hand_cards: Array[PanelContainer] = []
 
 const CARD_SIZE := Vector2(108.0, 148.0)
 const CARD_BOTTOM_MARGIN := 18.0
-const CARD_ATTACK_RELEASE_HEIGHT := 190.0
 const CARD_HAND_STEP := 70.0
 const CARD_HAND_RISE := 7.0
 const CARD_HOVER_LIFT := 18.0
 const CARD_HOVER_SCALE := 1.06
+const CARD_AIM_HAND_DIP := 76.0
+const CARD_AIM_SELECTED_DIP := 22.0
+const CARD_AIM_HAND_SPREAD_SCALE := 0.86
+const CARD_AIM_HAND_SCALE := 0.94
+const CARD_LAYOUT_TWEEN_SECONDS := 0.16
 const DECK_SHUFFLE_SECONDS := 2.0
 const DRAW_AFTER_SHUFFLE_DELAY := DECK_SHUFFLE_SECONDS * 0.5
 const HAND_REFILL_START_DELAY := 0.25
@@ -108,6 +112,9 @@ func _input(event: InputEvent) -> void:
 
 	if event is InputEventMouseButton and event.button_index == MOUSE_BUTTON_LEFT and not event.pressed:
 		_finish_skill_card_drag(get_viewport().get_mouse_position())
+		get_viewport().set_input_as_handled()
+	elif event is InputEventMouseButton and event.button_index == MOUSE_BUTTON_RIGHT and event.pressed:
+		_cancel_skill_card_drag()
 		get_viewport().set_input_as_handled()
 	elif event is InputEventMouseMotion:
 		_update_skill_card_drag()
@@ -641,6 +648,9 @@ func _on_skill_card_gui_input(event: InputEvent, card: PanelContainer) -> void:
 		else:
 			_finish_skill_card_drag(get_viewport().get_mouse_position())
 		get_viewport().set_input_as_handled()
+	elif event is InputEventMouseButton and event.button_index == MOUSE_BUTTON_RIGHT and event.pressed and _is_dragging_skill_card:
+		_cancel_skill_card_drag()
+		get_viewport().set_input_as_handled()
 	elif event is InputEventMouseMotion and _is_dragging_skill_card:
 		_update_skill_card_drag()
 		get_viewport().set_input_as_handled()
@@ -658,27 +668,27 @@ func _begin_skill_card_drag(mouse_position: Vector2, card: PanelContainer) -> vo
 	_drag_line.visible = false
 	_drag_arrow_head.visible = false
 	_hovered_heal_target_peer_id = -1
+	_reset_skill_card_positions()
 	_update_skill_card_drag_at(mouse_position)
 
 
-func _finish_skill_card_drag(mouse_position: Vector2) -> void:
+func _finish_skill_card_drag(_mouse_position: Vector2) -> void:
 	if not _is_dragging_skill_card:
 		return
 
 	_is_dragging_skill_card = false
 	var was_used := false
-	if mouse_position.y <= get_viewport().get_visible_rect().size.y - CARD_ATTACK_RELEASE_HEIGHT:
-		var stamina_cost := _get_card_stamina_cost(_dragged_skill_card)
-		if _skill_stamina.can_spend(stamina_cost):
-			if _is_heal_card(_dragged_skill_card) and _hovered_heal_target_peer_id < 0:
-				_release_hint.text = "Select target"
-			else:
-				was_used = _request_local_skill(_dragged_skill, _hovered_heal_target_peer_id)
-			if was_used:
-				_skill_stamina.spend(stamina_cost)
-				_update_stamina_ui()
+	var stamina_cost := _get_card_stamina_cost(_dragged_skill_card)
+	if _skill_stamina.can_spend(stamina_cost):
+		if _is_heal_card(_dragged_skill_card) and _hovered_heal_target_peer_id < 0:
+			_release_hint.text = "Select target"
 		else:
-			_release_hint.text = "Need %d stamina" % stamina_cost
+			was_used = _request_local_skill(_dragged_skill, _hovered_heal_target_peer_id)
+		if was_used:
+			_skill_stamina.spend(stamina_cost)
+			_update_stamina_ui()
+	else:
+		_release_hint.text = "Need %d stamina" % stamina_cost
 
 	_release_hint.visible = false
 	_release_hint.text = "Release to use"
@@ -693,6 +703,22 @@ func _finish_skill_card_drag(mouse_position: Vector2) -> void:
 		_discard_card(used_card)
 	if _hand_cards.is_empty():
 		_request_full_hand_draw()
+	_reset_skill_card_positions()
+
+
+func _cancel_skill_card_drag() -> void:
+	if not _is_dragging_skill_card:
+		return
+
+	_is_dragging_skill_card = false
+	_dragged_skill_card = null
+	_dragged_skill = ""
+	_hovered_heal_target_peer_id = -1
+	_release_hint.visible = false
+	_release_hint.text = "Release to use"
+	_drag_line.visible = false
+	_drag_arrow_head.visible = false
+	_set_skill_preview_visible(false)
 	_reset_skill_card_positions()
 
 
@@ -731,8 +757,7 @@ func _update_skill_card_drag() -> void:
 
 
 func _update_skill_card_drag_at(mouse_position: Vector2) -> void:
-	var can_release := mouse_position.y <= get_viewport().get_visible_rect().size.y - CARD_ATTACK_RELEASE_HEIGHT
-	_release_hint.visible = can_release
+	_release_hint.visible = true
 
 	var active_card := _dragged_skill_card
 	if active_card == null and not _hand_cards.is_empty():
@@ -742,12 +767,11 @@ func _update_skill_card_drag_at(mouse_position: Vector2) -> void:
 		_drag_arrow_head.visible = false
 		return
 	_update_skill_preview(active_card, mouse_position)
-	if can_release:
-		var stamina_cost := _get_card_stamina_cost(active_card)
-		if _skill_stamina.can_spend(stamina_cost):
-			_release_hint.text = "Release to use"
-		else:
-			_release_hint.text = "Need %d stamina" % stamina_cost
+	var stamina_cost := _get_card_stamina_cost(active_card)
+	if _skill_stamina.can_spend(stamina_cost):
+		_release_hint.text = "Release to use"
+	else:
+		_release_hint.text = "Need %d stamina" % stamina_cost
 	_drag_line.visible = false
 	_drag_arrow_head.visible = false
 
@@ -923,7 +947,8 @@ func _update_heal_target_preview(mouse_position: Vector2, _heal: int) -> Vector2
 		_set_heal_target_floor_visible(false)
 		return mouse_position
 
-	_hovered_heal_target_peer_id = int(target.get("peer_id"))
+	var peer_id = target.get("peer_id")
+	_hovered_heal_target_peer_id = int(peer_id) if peer_id is int or peer_id is float else -1
 	var center := _get_player_floor_target_world_center(target)
 	var pulse := 1.0 + sin(Time.get_ticks_msec() * 0.008) * 0.07
 	_update_heal_target_floor_circle(center, pulse)
@@ -1059,13 +1084,24 @@ func _update_drag_arrow_head(start_position: Vector2, end_position: Vector2) -> 
 func _reset_skill_card_positions() -> void:
 	var hand_count := _hand_cards.size()
 	for index in range(hand_count):
+		var card := _hand_cards[index]
+
 		var card_index := float(index)
 		var hand_center := (float(hand_count) - 1.0) * 0.5
 		var center_offset: float = (card_index - hand_center) * CARD_HAND_STEP
 		var distance_from_center: float = absf(card_index - hand_center)
 		var rise: float = -CARD_HAND_RISE * (1.0 - minf(distance_from_center, 1.0))
 		var rotation: float = clampf(center_offset / CARD_HAND_STEP, -2.0, 2.0) * 4.0
-		_reset_skill_card_position(_hand_cards[index], center_offset, rise, rotation, 40 + index)
+		if _is_dragging_skill_card:
+			if card == _dragged_skill_card:
+				rise += CARD_AIM_SELECTED_DIP
+				rotation = 0.0
+			else:
+				center_offset *= CARD_AIM_HAND_SPREAD_SCALE
+				rise += CARD_AIM_HAND_DIP
+				rotation *= 0.55
+		var z_order := 60 if card == _dragged_skill_card else 40 + index
+		_reset_skill_card_position(card, center_offset, rise, rotation, z_order)
 
 
 func _reset_skill_card_position(
@@ -1085,6 +1121,8 @@ func _reset_skill_card_position(
 	var target_scale := Vector2.ONE
 	if card == _hovered_skill_card and not _is_dragging_skill_card:
 		target_scale = Vector2(CARD_HOVER_SCALE, CARD_HOVER_SCALE)
+	elif _is_dragging_skill_card and card != _dragged_skill_card:
+		target_scale = Vector2(CARD_AIM_HAND_SCALE, CARD_AIM_HAND_SCALE)
 
 	card.anchor_left = 0.5
 	card.anchor_top = 1.0
@@ -1139,12 +1177,12 @@ func _animate_skill_card_to(
 	tween.set_parallel(true)
 	tween.set_trans(Tween.TRANS_QUAD)
 	tween.set_ease(Tween.EASE_OUT)
-	tween.tween_property(card, "offset_left", target_position.x, 0.12)
-	tween.tween_property(card, "offset_top", target_position.y, 0.12)
-	tween.tween_property(card, "offset_right", target_position.x + CARD_SIZE.x, 0.12)
-	tween.tween_property(card, "offset_bottom", target_position.y + CARD_SIZE.y, 0.12)
-	tween.tween_property(card, "rotation_degrees", target_rotation, 0.12)
-	tween.tween_property(card, "scale", target_scale, 0.12)
+	tween.tween_property(card, "offset_left", target_position.x, CARD_LAYOUT_TWEEN_SECONDS)
+	tween.tween_property(card, "offset_top", target_position.y, CARD_LAYOUT_TWEEN_SECONDS)
+	tween.tween_property(card, "offset_right", target_position.x + CARD_SIZE.x, CARD_LAYOUT_TWEEN_SECONDS)
+	tween.tween_property(card, "offset_bottom", target_position.y + CARD_SIZE.y, CARD_LAYOUT_TWEEN_SECONDS)
+	tween.tween_property(card, "rotation_degrees", target_rotation, CARD_LAYOUT_TWEEN_SECONDS)
+	tween.tween_property(card, "scale", target_scale, CARD_LAYOUT_TWEEN_SECONDS)
 	card.set_meta("target_position", target_position)
 	card.set_meta("target_rotation", target_rotation)
 	card.set_meta("target_scale", target_scale)
@@ -1178,7 +1216,8 @@ func _find_player_at_screen_position(screen_position: Vector2) -> Node2D:
 		var player := node as Node2D
 		if player == null or player == _heal_target_floor_root:
 			continue
-		if int(player.get("_health")) <= 0:
+		var health = player.get("_health")
+		if (health is int or health is float) and int(health) <= 0:
 			continue
 
 		var center := _get_player_floor_target_center(player)
