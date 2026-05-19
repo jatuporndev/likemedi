@@ -1,14 +1,20 @@
 extends Node
 
 const PLAYER_SCENE := preload("res://scenes/player/player.tscn")
+const PLAYER_SPAWN_SPACING := 54.0
+const FALLBACK_PLAYER_SPAWN := Vector2(240, 220)
+const POINTER_NODE_NAME := "Pointer"
+const SPAWN_ANCHOR_NODE_NAME := "SpawnAnchor"
 
 @onready var players: Node2D = $"../Players"
+@onready var player_spawn_point: Node2D = $"../PlayerSpawnPoint"
 
 var _known_players: Dictionary = {}
 
 
 func _ready() -> void:
 	NetworkManager.peer_left.connect(_on_peer_left)
+	_normalize_player_spawn_point()
 
 	if multiplayer.is_server():
 		if not NetworkManager.is_dedicated_server():
@@ -62,7 +68,7 @@ func _add_player(peer_id: int, display_name: String) -> void:
 	if _known_players.has(peer_id):
 		return
 
-	var spawn_position := Vector2(240 + (_known_players.size() * 54), 220)
+	var spawn_position := _get_player_spawn_position()
 	_known_players[peer_id] = {
 		"name": display_name,
 		"position": spawn_position,
@@ -100,3 +106,27 @@ func set_local_stamina_bar(current_value: float, max_value: float) -> void:
 
 func _get_local_player() -> Node:
 	return players.get_node_or_null(str(multiplayer.get_unique_id()))
+
+
+func _get_player_spawn_position() -> Vector2:
+	var base_spawn := FALLBACK_PLAYER_SPAWN
+	if player_spawn_point != null:
+		var spawn_anchor := player_spawn_point.get_node_or_null(SPAWN_ANCHOR_NODE_NAME) as Node2D
+		if spawn_anchor != null:
+			base_spawn = players.to_local(spawn_anchor.global_position)
+		else:
+			base_spawn = players.to_local(player_spawn_point.global_position)
+
+	return base_spawn + Vector2(_known_players.size() * PLAYER_SPAWN_SPACING, 0.0)
+
+
+func _normalize_player_spawn_point() -> void:
+	if player_spawn_point == null:
+		return
+
+	var pointer := player_spawn_point.get_node_or_null(POINTER_NODE_NAME) as Node2D
+	if pointer == null or pointer.position.is_zero_approx():
+		return
+
+	player_spawn_point.global_position = pointer.global_position
+	pointer.position = Vector2.ZERO

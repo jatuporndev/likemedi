@@ -1,0 +1,179 @@
+[gd_scene format=3 uid="uid://8poqnbapldn8"]
+
+[ext_resource type="Script" uid="uid://csr8i43q6s5p8" path="res://scripts/ui/skill_card_view.gd" id="1_script"]
+
+[sub_resource type="StyleBoxFlat" id="StyleBoxFlat_card"]
+bg_color = Color(0.1, 0.075, 0.055, 0.98)
+border_width_left = 2
+border_width_top = 2
+border_width_right = 2
+border_width_bottom = 2
+border_color = Color(0.9, 0.67, 0.3, 1)
+corner_radius_top_left = 7
+corner_radius_top_right = 7
+corner_radius_bottom_right = 7
+corner_radius_bottom_left = 7
+
+[sub_resource type="StyleBoxFlat" id="StyleBoxFlat_header"]
+bg_color = Color(0.18, 0.12, 0.07, 1)
+border_width_left = 1
+border_width_top = 1
+border_width_right = 1
+border_width_bottom = 1
+border_color = Color(0.54, 0.36, 0.16, 1)
+corner_radius_top_left = 4
+corner_radius_top_right = 4
+corner_radius_bottom_right = 4
+corner_radius_bottom_left = 4
+
+[sub_resource type="StyleBoxFlat" id="StyleBoxFlat_cost"]
+bg_color = Color(0.16, 0.35, 0.42, 1)
+border_width_left = 1
+border_width_top = 1
+border_width_right = 1
+border_width_bottom = 1
+border_color = Color(0.72, 0.92, 1, 1)
+corner_radius_top_left = 11
+corner_radius_top_right = 11
+corner_radius_bottom_right = 11
+corner_radius_bottom_left = 11
+
+[sub_resource type="StyleBoxFlat" id="StyleBoxFlat_art"]
+bg_color = Color(0.2, 0.05, 0.05, 1)
+border_width_left = 1
+border_width_top = 1
+border_width_right = 1
+border_width_bottom = 1
+border_color = Color(0.74, 0.5, 0.22, 1)
+corner_radius_top_left = 4
+corner_radius_top_right = 4
+corner_radius_bottom_right = 4
+corner_radius_bottom_left = 4
+
+[sub_resource type="StyleBoxFlat" id="StyleBoxFlat_description"]
+bg_color = Color(0.92, 0.78, 0.52, 1)
+border_width_left = 1
+border_width_top = 1
+border_width_right = 1
+border_width_bottom = 1
+border_color = Color(0.44, 0.27, 0.1, 1)
+corner_radius_top_left = 4
+corner_radius_top_right = 4
+corner_radius_bottom_right = 4
+corner_radius_bottom_left = 4
+
+[node name="SkillCardView" type="PanelContainer" unique_id=726807174]
+custom_minimum_size = Vector2(112, 154)
+theme_override_styles/panel = SubResource("StyleBoxFlat_card")
+script = ExtResource("1_script")
+
+[node name="Margin" type="MarginContainer" parent="." unique_id=172048750]
+layout_mode = 2
+mouse_filter = 2
+theme_override_constants/margin_left = 6
+theme_override_constants/margin_top = 6
+theme_override_constants/margin_right = 6
+theme_override_constants/margin_bottom = 6
+
+[node name="Layout" type="VBoxContainer" parent="Margin" unique_id=1745318629]
+layout_mode = 2
+mouse_filter = 2
+theme_override_constants/separation = 4
+
+[node name="Header" type="PanelContainer" parent="Margin/Layout" unique_id=1620987489]
+custom_minimum_size = Vector2(0, 26)
+layout_mode = 2
+mouse_filter = 2
+theme_override_styles/panel = SubResource("StyleBoxFlat_header")
+
+[node name="HeaderMargin" type="MarginContainer" parent="Margin/Layout/Header" unique_id=264954599]
+layout_mode = 2
+mouse_filter = 2
+theme_override_constants/margin_left = 4
+theme_override_constants/margin_top = 3
+theme_override_constants/margin_right = 4
+theme_override_constants/margin_bottom = 3
+
+[node name="HeaderRow" type="HBoxContainer" parent="Margin/Layout/Header/HeaderMargin" unique_id=29055643]
+layout_mode = 2
+mouse_filter = 2
+theme_override_constants/separation = 4
+
+[node name="CostBadge" type="PanelContainer" parent="Margin/Layout/Header/HeaderMargin/HeaderRow" unique_id=1759512933]
+custom_minimum_size = Vector2(20, 20)
+layout_mode = 2
+mouse_filter = 2
+theme_override_styles/panel = SubResource("StyleBoxFlat_cost")
+
+[node name="CostLabel" type="Label" parent="Margin/Layout/Header/HeaderMargin/HeaderRow/CostBadge" unique_id=1578784586]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(20, 20)
+layout_mode = 2
+theme_override_colors/font_color = Color(0.82, 0.96, 1, 1)
+theme_override_font_sizes/font_size = 13
+text = "1"
+horizontal_alignment = 1
+vertical_alignment = 1
+
+[node name="TitleLabel" type="Label" parent="Margin/Layout/Header/HeaderMargin/HeaderRow" unique_id=626043134]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(0, 18)
+layout_mode = 2
+size_flags_horizontal = 3
+theme_override_colors/font_color = Color(1, 0.88, 0.55, 1)
+theme_override_font_sizes/font_size = 13
+text = "test teststset"
+vertical_alignment = 1
+clip_text = true
+text_overrun_behavior = 3
+
+[node name="ArtFrame" type="PanelContainer" parent="Margin/Layout" unique_id=81864723]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(0, 56)
+layout_mode = 2
+mouse_filter = 2
+theme_override_styles/panel = SubResource("StyleBoxFlat_art")
+
+[node name="ArtMargin" type="MarginContainer" parent="Margin/Layout/ArtFrame" unique_id=991264229]
+layout_mode = 2
+mouse_filter = 2
+theme_override_constants/margin_left = 5
+theme_override_constants/margin_top = 5
+theme_override_constants/margin_right = 5
+theme_override_constants/margin_bottom = 5
+
+[node name="ArtColorRect" type="ColorRect" parent="Margin/Layout/ArtFrame/ArtMargin" unique_id=2089427883]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(0, 46)
+layout_mode = 2
+mouse_filter = 2
+color = Color(0.32, 0.08, 0.08, 1)
+
+[node name="DescriptionFrame" type="PanelContainer" parent="Margin/Layout" unique_id=1312725931]
+clip_contents = true
+custom_minimum_size = Vector2(0, 40)
+layout_mode = 2
+mouse_filter = 2
+theme_override_styles/panel = SubResource("StyleBoxFlat_description")
+
+[node name="DescriptionMargin" type="MarginContainer" parent="Margin/Layout/DescriptionFrame" unique_id=149121965]
+layout_mode = 2
+mouse_filter = 2
+theme_override_constants/margin_left = 4
+theme_override_constants/margin_top = 3
+theme_override_constants/margin_right = 4
+theme_override_constants/margin_bottom = 3
+
+[node name="DescriptionLabel" type="Label" parent="Margin/Layout/DescriptionFrame/DescriptionMargin" unique_id=2078679501]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(0, 34)
+layout_mode = 2
+size_flags_vertical = 3
+theme_override_colors/font_color = Color(0.12, 0.07, 0.03, 1)
+theme_override_font_sizes/font_size = 10
+text = "testsdfserwserwerwerwe"
+horizontal_alignment = 1
+vertical_alignment = 1
+autowrap_mode = 2
+clip_text = true
+max_lines_visible = 3

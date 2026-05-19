@@ -6,9 +6,8 @@
 [ext_resource type="Texture2D" uid="uid://dqpoghhdybhl2" path="res://sprites/player/Attack1.png" id="4_attack"]
 [ext_resource type="Texture2D" uid="uid://c6o3hf7xqcn2m" path="res://sprites/player/Hurt.png" id="5_hurt"]
 
-[sub_resource type="CapsuleShape2D" id="CapsuleShape2D_player"]
-radius = 12.0
-height = 34.0
+[sub_resource type="CircleShape2D" id="CircleShape2D_player_feet"]
+radius = 16.0
 
 [node name="Player" type="CharacterBody2D" unique_id=1011150270]
 script = ExtResource("1_player")
@@ -18,13 +17,13 @@ attack_texture = ExtResource("4_attack")
 hurt_texture = ExtResource("5_hurt")
 
 [node name="Sprite2D" type="Sprite2D" parent="." unique_id=1638438518]
+texture_filter = 1
 texture = ExtResource("2_idle")
 hframes = 8
-frame = 1
 
 [node name="CollisionShape2D" type="CollisionShape2D" parent="." unique_id=1933279599]
-position = Vector2(0, 34)
-shape = SubResource("CapsuleShape2D_player")
+position = Vector2(-2, 34)
+shape = SubResource("CircleShape2D_player_feet")
 
 [node name="NameLabel" type="Label" parent="." unique_id=2067456451]
 offset_left = -64.0
@@ -61,4 +60,4 @@ color = Color(0.9, 0.28, 0.18, 0.75)
 
 [node name="Camera2D" type="Camera2D" parent="." unique_id=334356496]
 enabled = false
-zoom = Vector2(1.35, 1.35)
+zoom = Vector2(1.15, 1.15)

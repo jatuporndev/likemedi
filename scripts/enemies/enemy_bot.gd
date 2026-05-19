@@ -35,6 +35,12 @@ const STUN_SECONDS := 0.3
 const DRAW_ORDER_FOOT_OFFSET := 34.0
 const DRAW_ORDER_MIN := -4096
 const DRAW_ORDER_MAX := 4096
+const STUCK_CHECK_MIN_SPEED := 12.0
+const STUCK_PROGRESS_RATIO := 0.22
+const STUCK_SECONDS := 0.22
+const STUCK_AVOID_SECONDS := 0.7
+const AVOID_TARGET_WEIGHT := 0.42
+const AVOID_TANGENT_WEIGHT := 0.92
 
 var _health := 60
 var _attack_time := 0.0
@@ -51,6 +57,9 @@ var _facing_left := false
 var _visual_velocity := Vector2.ZERO
 var _target: Node2D
 var _rng := RandomNumberGenerator.new()
+var _stuck_time := 0.0
+var _avoidance_time := 0.0
+var _avoidance_direction := Vector2.ZERO
 
 
 func _ready() -> void:
@@ -110,27 +119,26 @@ func _update_server_ai(delta: float) -> void:
 			_forget_target_here()
 			return
 
-		_chase_target(_target)
+		_chase_target(_target, delta)
 		return
 
 	_wander(delta)
 
 
-func _chase_target(target: Node2D) -> void:
+func _chase_target(target: Node2D, delta: float) -> void:
 	var target_position := target.global_position
 	var to_target := target_position - global_position
 	_facing_left = to_target.x < 0.0
 
 	if to_target.length() <= attack_range:
+		_reset_stuck_recovery()
 		velocity = Vector2.ZERO
 		_visual_velocity = velocity
 		move_and_slide()
 		_try_attack(target)
 		return
 
-	velocity = to_target.normalized() * speed
-	move_and_slide()
-	_visual_velocity = velocity
+	_move_toward(target_position, speed, delta)
 
 
 func _wander(delta: float) -> void:
@@ -148,21 +156,101 @@ func _wander(delta: float) -> void:
 		_wander_time = _rng.randf_range(WANDER_MOVE_MIN, WANDER_MOVE_MAX)
 
 	_wander_time = max(_wander_time - delta, 0.0)
-	_move_toward(_wander_target, wander_speed)
+	_move_toward(_wander_target, wander_speed, delta)
 	if _wander_time <= 0.0:
 		_wait_time = _rng.randf_range(WANDER_WAIT_MIN, WANDER_WAIT_MAX)
 
 
-func _move_toward(target_position: Vector2, move_speed: float) -> void:
+func _move_toward(target_position: Vector2, move_speed: float, delta: float) -> void:
 	var to_target := target_position - global_position
 	if to_target.length() <= 4.0:
+		_reset_stuck_recovery()
 		velocity = Vector2.ZERO
 	else:
 		_facing_left = to_target.x < 0.0
-		velocity = to_target.normalized() * move_speed
+		velocity = _get_recovery_velocity(to_target.normalized(), move_speed, delta)
 
+	var previous_position := global_position
 	move_and_slide()
 	_visual_velocity = velocity
+	_update_stuck_recovery(previous_position, target_position, velocity, delta)
+
+
+func _get_recovery_velocity(target_direction: Vector2, move_speed: float, delta: float) -> Vector2:
+	if _avoidance_time <= 0.0 or _avoidance_direction == Vector2.ZERO:
+		return target_direction * move_speed
+
+	_avoidance_time = maxf(_avoidance_time - delta, 0.0)
+	var recovery_direction := (
+		target_direction * AVOID_TARGET_WEIGHT
+		+ _avoidance_direction * AVOID_TANGENT_WEIGHT
+	).normalized()
+
+	if _avoidance_time <= 0.0:
+		_avoidance_direction = Vector2.ZERO
+
+	return recovery_direction * move_speed
+
+
+func _update_stuck_recovery(
+	previous_position: Vector2,
+	target_position: Vector2,
+	requested_velocity: Vector2,
+	delta: float
+) -> void:
+	var expected_distance := requested_velocity.length() * delta
+	if expected_distance < STUCK_CHECK_MIN_SPEED * delta:
+		_stuck_time = 0.0
+		return
+
+	var actual_distance := previous_position.distance_to(global_position)
+	var blocked := actual_distance < expected_distance * STUCK_PROGRESS_RATIO
+
+	if blocked:
+		_stuck_time += delta
+		if _stuck_time >= STUCK_SECONDS:
+			_begin_stuck_recovery(target_position)
+			_stuck_time = 0.0
+	else:
+		_stuck_time = maxf(_stuck_time - delta * 2.0, 0.0)
+		if get_slide_collision_count() == 0 and actual_distance >= expected_distance * 0.8:
+			_avoidance_time = 0.0
+			_avoidance_direction = Vector2.ZERO
+
+
+func _begin_stuck_recovery(target_position: Vector2) -> void:
+	var target_direction := (target_position - global_position).normalized()
+	if target_direction == Vector2.ZERO:
+		return
+
+	var normal := Vector2.ZERO
+	var collision_count := get_slide_collision_count()
+	if collision_count > 0:
+		var collision := get_slide_collision(collision_count - 1)
+		if collision != null:
+			normal = collision.get_normal()
+
+	if normal == Vector2.ZERO:
+		normal = -target_direction
+
+	var tangent := Vector2(-normal.y, normal.x).normalized()
+	if tangent == Vector2.ZERO:
+		tangent = Vector2(-target_direction.y, target_direction.x).normalized()
+	if tangent.dot(target_direction) < 0.0:
+		tangent = -tangent
+
+	if _avoidance_time > 0.0 and _avoidance_direction != Vector2.ZERO:
+		_avoidance_direction = -_avoidance_direction
+	else:
+		_avoidance_direction = tangent
+
+	_avoidance_time = STUCK_AVOID_SECONDS
+
+
+func _reset_stuck_recovery() -> void:
+	_stuck_time = 0.0
+	_avoidance_time = 0.0
+	_avoidance_direction = Vector2.ZERO
 
 
 func _find_closest_player(max_range: float) -> Node2D:

@@ -3,7 +3,7 @@ extends CanvasLayer
 const SKILL_CARD_DATABASE := preload("res://scripts/game/skill_card_database.gd")
 const SKILL_DECK := preload("res://scripts/game/skill_deck.gd")
 const SKILL_STAMINA := preload("res://scripts/game/skill_stamina.gd")
-const SKILL_CARD_VIEW := preload("res://scripts/ui/skill_card_view.gd")
+const SKILL_CARD_SCENE := preload("res://scenes/ui/skill_card_view.tscn")
 
 var _chat_log: RichTextLabel
 var _chat_input: LineEdit
@@ -15,12 +15,15 @@ var _stamina_bar: ProgressBar
 var _draw_deck_label: Label
 var _discard_deck_label: Label
 var _end_hand_button: Button
+var _pause_overlay: Control
 var _dragged_skill_card: PanelContainer
 var _release_hint: Label
 var _drag_line: Line2D
 var _drag_arrow_head: Polygon2D
 var _skill_preview_rects: Array[Polygon2D] = []
 var _skill_preview_border: Line2D
+var _skill_preview_centerline: Line2D
+var _skill_preview_rune_marks: Array[Line2D] = []
 var _skill_preview_label: Label
 var _heal_cursor_ring: Line2D
 var _heal_target_floor_root: Node2D
@@ -36,16 +39,17 @@ var _skill_deck := SKILL_DECK.new()
 var _skill_stamina := SKILL_STAMINA.new()
 var _hand_cards: Array[PanelContainer] = []
 
-const CARD_SIZE := Vector2(108.0, 148.0)
-const CARD_BOTTOM_MARGIN := 18.0
-const CARD_HAND_STEP := 70.0
-const CARD_HAND_RISE := 7.0
-const CARD_HOVER_LIFT := 18.0
-const CARD_HOVER_SCALE := 1.06
+const CARD_SIZE := Vector2(112.0, 154.0)
+const CARD_SCREEN_SCALE := 0.78
+const CARD_BOTTOM_MARGIN := 14.0
+const CARD_HAND_STEP := 58.0
+const CARD_HAND_RISE := 5.0
+const CARD_HOVER_LIFT := 14.0
+const CARD_HOVER_SCALE := 0.86
 const CARD_AIM_HAND_DIP := 76.0
 const CARD_AIM_SELECTED_DIP := 22.0
 const CARD_AIM_HAND_SPREAD_SCALE := 0.86
-const CARD_AIM_HAND_SCALE := 0.94
+const CARD_AIM_HAND_SCALE := 0.72
 const CARD_LAYOUT_TWEEN_SECONDS := 0.16
 const DECK_SHUFFLE_SECONDS := 2.0
 const DRAW_AFTER_SHUFFLE_DELAY := DECK_SHUFFLE_SECONDS * 0.5
@@ -54,9 +58,16 @@ const CARD_DRAW_DELAY := 0.18
 const SKILL_PREVIEW_WIDTH := 44.0
 const SKILL_PREVIEW_START_OFFSET := Vector2(0.0, 36.0)
 const SKILL_PREVIEW_FORWARD_OFFSET := 30.0
-const SKILL_PREVIEW_OPACITY_STEPS := [0.08, 0.14, 0.22, 0.34, 0.48, 0.64, 0.78, 0.90, 1.0, 1.0]
+const SKILL_PREVIEW_OPACITY_STEPS := [0.10, 0.16, 0.24, 0.34, 0.46, 0.60, 0.74, 0.86, 0.96, 1.0]
 const SKILL_PREVIEW_HIT_PADDING := 20.0
 const SKILL_PREVIEW_TARGET_RADIUS := 34.0
+const SKILL_PREVIEW_RUNE_MARK_COUNT := 8
+const SKILL_PREVIEW_VALID_FILL := Color(0.92, 0.32, 0.08, 0.24)
+const SKILL_PREVIEW_VALID_BORDER := Color(1.0, 0.70, 0.24, 0.46)
+const SKILL_PREVIEW_VALID_GLYPH := Color(1.0, 0.88, 0.52, 0.62)
+const SKILL_PREVIEW_INVALID_FILL := Color(0.28, 0.26, 0.24, 0.18)
+const SKILL_PREVIEW_INVALID_BORDER := Color(0.62, 0.56, 0.48, 0.30)
+const SKILL_PREVIEW_INVALID_GLYPH := Color(0.72, 0.66, 0.56, 0.34)
 const STRIKE_SKILL_NAME := "strike"
 const STRIKE_PREVIEW_SEGMENTS := 28
 const STRIKE_PREVIEW_FORWARD_OFFSET := 28.0
@@ -99,7 +110,8 @@ func _unhandled_input(event: InputEvent) -> void:
 			_chat_input.release_focus()
 			get_viewport().set_input_as_handled()
 		else:
-			NetworkManager.leave_game()
+			_toggle_pause_menu()
+			get_viewport().set_input_as_handled()
 	elif event is InputEventKey and event.pressed and not event.echo and event.keycode == KEY_ENTER:
 		if _chat_input != null and not _chat_input.has_focus():
 			_chat_input.grab_focus()
@@ -127,21 +139,21 @@ func _build_ui() -> void:
 	top_bar.offset_left = 12
 	top_bar.offset_top = 12
 	top_bar.offset_right = -12
-	top_bar.offset_bottom = 58
+	top_bar.offset_bottom = 48
 	add_child(top_bar)
 
 	var top_margin := MarginContainer.new()
-	top_margin.add_theme_constant_override("margin_left", 12)
-	top_margin.add_theme_constant_override("margin_right", 12)
-	top_margin.add_theme_constant_override("margin_top", 8)
-	top_margin.add_theme_constant_override("margin_bottom", 8)
+	top_margin.add_theme_constant_override("margin_left", 9)
+	top_margin.add_theme_constant_override("margin_right", 9)
+	top_margin.add_theme_constant_override("margin_top", 6)
+	top_margin.add_theme_constant_override("margin_bottom", 6)
 	top_bar.add_child(top_margin)
 
 	var top_layout := HBoxContainer.new()
 	top_margin.add_child(top_layout)
 
 	_player_name_label = Label.new()
-	_player_name_label.custom_minimum_size = Vector2(150, 0)
+	_player_name_label.custom_minimum_size = Vector2(124, 0)
 	_player_name_label.text = _get_local_player_name()
 	top_layout.add_child(_player_name_label)
 
@@ -158,7 +170,7 @@ func _build_ui() -> void:
 	top_layout.add_child(_host_label)
 
 	_fps_label = Label.new()
-	_fps_label.custom_minimum_size = Vector2(72, 0)
+	_fps_label.custom_minimum_size = Vector2(60, 0)
 	_fps_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
 	_fps_label.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
 	_fps_label.text = "FPS 0"
@@ -182,35 +194,39 @@ func _build_ui() -> void:
 	chat_panel.anchor_right = 0.0
 	chat_panel.anchor_bottom = 1.0
 	chat_panel.offset_left = 12
-	chat_panel.offset_top = -188
-	chat_panel.offset_right = 292
+	chat_panel.offset_top = -142
+	chat_panel.offset_right = 224
 	chat_panel.offset_bottom = -12
 	add_child(chat_panel)
 
 	var chat_margin := MarginContainer.new()
-	chat_margin.add_theme_constant_override("margin_left", 10)
-	chat_margin.add_theme_constant_override("margin_right", 10)
-	chat_margin.add_theme_constant_override("margin_top", 10)
-	chat_margin.add_theme_constant_override("margin_bottom", 10)
+	chat_margin.add_theme_constant_override("margin_left", 7)
+	chat_margin.add_theme_constant_override("margin_right", 7)
+	chat_margin.add_theme_constant_override("margin_top", 7)
+	chat_margin.add_theme_constant_override("margin_bottom", 7)
 	chat_panel.add_child(chat_margin)
 
 	var chat_layout := VBoxContainer.new()
-	chat_layout.add_theme_constant_override("separation", 8)
+	chat_layout.add_theme_constant_override("separation", 5)
 	chat_margin.add_child(chat_layout)
 
 	_chat_log = RichTextLabel.new()
-	_chat_log.custom_minimum_size = Vector2(0, 104)
+	_chat_log.custom_minimum_size = Vector2(0, 76)
 	_chat_log.fit_content = false
 	_chat_log.scroll_following = true
+	_chat_log.add_theme_font_size_override("normal_font_size", 10)
+	_chat_log.add_theme_font_size_override("bold_font_size", 10)
 	chat_layout.add_child(_chat_log)
 
 	_chat_input = LineEdit.new()
 	_chat_input.placeholder_text = "Chat"
+	_chat_input.add_theme_font_size_override("font_size", 10)
 	_chat_input.text_submitted.connect(_submit_chat)
 	chat_layout.add_child(_chat_input)
 
 	_build_deck_ui()
 	_build_skill_card_ui()
+	_build_pause_menu()
 
 
 func _submit_chat(message: String) -> void:
@@ -232,6 +248,139 @@ func _copy_room_code() -> void:
 	]
 
 
+func _build_pause_menu() -> void:
+	_pause_overlay = Control.new()
+	_pause_overlay.visible = false
+	_pause_overlay.mouse_filter = Control.MOUSE_FILTER_STOP
+	_pause_overlay.set_anchors_preset(Control.PRESET_FULL_RECT)
+	_pause_overlay.z_index = 100
+	add_child(_pause_overlay)
+
+	var shade := ColorRect.new()
+	shade.color = Color(0.02, 0.015, 0.01, 0.58)
+	shade.mouse_filter = Control.MOUSE_FILTER_STOP
+	shade.set_anchors_preset(Control.PRESET_FULL_RECT)
+	_pause_overlay.add_child(shade)
+
+	var panel := PanelContainer.new()
+	panel.custom_minimum_size = Vector2(220.0, 0.0)
+	panel.anchor_left = 0.5
+	panel.anchor_top = 0.5
+	panel.anchor_right = 0.5
+	panel.anchor_bottom = 0.5
+	panel.offset_left = -110.0
+	panel.offset_top = -104.0
+	panel.offset_right = 110.0
+	panel.offset_bottom = 104.0
+	panel.mouse_filter = Control.MOUSE_FILTER_STOP
+	panel.add_theme_stylebox_override("panel", _create_pause_panel_style())
+	_pause_overlay.add_child(panel)
+
+	var margin := MarginContainer.new()
+	margin.add_theme_constant_override("margin_left", 18)
+	margin.add_theme_constant_override("margin_right", 18)
+	margin.add_theme_constant_override("margin_top", 16)
+	margin.add_theme_constant_override("margin_bottom", 16)
+	panel.add_child(margin)
+
+	var layout := VBoxContainer.new()
+	layout.add_theme_constant_override("separation", 10)
+	margin.add_child(layout)
+
+	var title := Label.new()
+	title.text = "Paused"
+	title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	title.add_theme_color_override("font_color", Color(1.0, 0.86, 0.52))
+	title.add_theme_font_size_override("font_size", 20)
+	layout.add_child(title)
+
+	var resume_button := _create_pause_button("Resume")
+	resume_button.pressed.connect(_hide_pause_menu)
+	layout.add_child(resume_button)
+
+	var settings_button := _create_pause_button("Settings")
+	layout.add_child(settings_button)
+
+	var leave_button := _create_pause_button("Leave")
+	leave_button.pressed.connect(Callable(NetworkManager, "leave_game"))
+	layout.add_child(leave_button)
+
+
+func _create_pause_panel_style() -> StyleBoxFlat:
+	var panel_style := StyleBoxFlat.new()
+	panel_style.bg_color = Color(0.10, 0.075, 0.055, 0.97)
+	panel_style.border_color = Color(0.90, 0.67, 0.30)
+	panel_style.border_width_left = 2
+	panel_style.border_width_top = 2
+	panel_style.border_width_right = 2
+	panel_style.border_width_bottom = 2
+	panel_style.corner_radius_top_left = 7
+	panel_style.corner_radius_top_right = 7
+	panel_style.corner_radius_bottom_left = 7
+	panel_style.corner_radius_bottom_right = 7
+	return panel_style
+
+
+func _create_pause_button(text: String) -> Button:
+	var button := Button.new()
+	button.text = text
+	button.custom_minimum_size = Vector2(0.0, 30.0)
+	button.focus_mode = Control.FOCUS_NONE
+	button.add_theme_font_size_override("font_size", 13)
+	button.add_theme_color_override("font_color", Color(0.95, 0.86, 0.62))
+	button.add_theme_stylebox_override(
+		"normal",
+		_create_pause_button_style(Color(0.18, 0.12, 0.07, 0.98), Color(0.54, 0.36, 0.16))
+	)
+	button.add_theme_stylebox_override(
+		"hover",
+		_create_pause_button_style(Color(0.24, 0.16, 0.08, 0.98), Color(0.90, 0.67, 0.30))
+	)
+	button.add_theme_stylebox_override(
+		"pressed",
+		_create_pause_button_style(Color(0.12, 0.09, 0.07, 0.98), Color(0.74, 0.50, 0.22))
+	)
+	return button
+
+
+func _create_pause_button_style(bg_color: Color, border_color: Color) -> StyleBoxFlat:
+	var button_style := StyleBoxFlat.new()
+	button_style.bg_color = bg_color
+	button_style.border_color = border_color
+	button_style.border_width_left = 1
+	button_style.border_width_top = 1
+	button_style.border_width_right = 1
+	button_style.border_width_bottom = 1
+	button_style.corner_radius_top_left = 5
+	button_style.corner_radius_top_right = 5
+	button_style.corner_radius_bottom_left = 5
+	button_style.corner_radius_bottom_right = 5
+	return button_style
+
+
+func _toggle_pause_menu() -> void:
+	if _pause_overlay == null:
+		return
+	if _pause_overlay.visible:
+		_hide_pause_menu()
+	else:
+		_show_pause_menu()
+
+
+func _show_pause_menu() -> void:
+	if _pause_overlay == null:
+		return
+	if _is_dragging_skill_card:
+		_cancel_skill_card_drag()
+	_pause_overlay.visible = true
+
+
+func _hide_pause_menu() -> void:
+	if _pause_overlay == null:
+		return
+	_pause_overlay.visible = false
+
+
 func _get_local_player_name() -> String:
 	var local_peer_id := multiplayer.get_unique_id()
 	if NetworkManager.player_names.has(local_peer_id):
@@ -245,25 +394,25 @@ func _build_deck_ui() -> void:
 	deck_panel.anchor_top = 1.0
 	deck_panel.anchor_right = 1.0
 	deck_panel.anchor_bottom = 1.0
-	deck_panel.offset_left = -342
-	deck_panel.offset_top = -126
+	deck_panel.offset_left = -258
+	deck_panel.offset_top = -96
 	deck_panel.offset_right = -12
 	deck_panel.offset_bottom = -12
 	add_child(deck_panel)
 
 	var deck_margin := MarginContainer.new()
-	deck_margin.add_theme_constant_override("margin_left", 10)
-	deck_margin.add_theme_constant_override("margin_right", 10)
-	deck_margin.add_theme_constant_override("margin_top", 10)
-	deck_margin.add_theme_constant_override("margin_bottom", 10)
+	deck_margin.add_theme_constant_override("margin_left", 7)
+	deck_margin.add_theme_constant_override("margin_right", 7)
+	deck_margin.add_theme_constant_override("margin_top", 7)
+	deck_margin.add_theme_constant_override("margin_bottom", 7)
 	deck_panel.add_child(deck_margin)
 
 	var deck_layout := VBoxContainer.new()
-	deck_layout.add_theme_constant_override("separation", 8)
+	deck_layout.add_theme_constant_override("separation", 5)
 	deck_margin.add_child(deck_layout)
 
 	var stacks := HBoxContainer.new()
-	stacks.add_theme_constant_override("separation", 10)
+	stacks.add_theme_constant_override("separation", 7)
 	deck_layout.add_child(stacks)
 
 	var stamina_panel := _create_stamina_panel()
@@ -277,7 +426,8 @@ func _build_deck_ui() -> void:
 
 	_end_hand_button = Button.new()
 	_end_hand_button.text = "End Hand"
-	_end_hand_button.custom_minimum_size = Vector2(0.0, 30.0)
+	_end_hand_button.custom_minimum_size = Vector2(0.0, 22.0)
+	_end_hand_button.add_theme_font_size_override("font_size", 10)
 	_end_hand_button.focus_mode = Control.FOCUS_NONE
 	_end_hand_button.pressed.connect(_on_end_hand_pressed)
 	deck_layout.add_child(_end_hand_button)
@@ -285,11 +435,11 @@ func _build_deck_ui() -> void:
 
 func _create_deck_stack_label(title: String, count: int) -> Label:
 	var label := Label.new()
-	label.custom_minimum_size = Vector2(94.0, 54.0)
+	label.custom_minimum_size = Vector2(70.0, 40.0)
 	label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	label.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
 	label.text = "%s\n%d" % [title, count]
-	label.add_theme_font_size_override("font_size", 13)
+	label.add_theme_font_size_override("font_size", 10)
 	label.add_theme_color_override("font_color", Color(0.95, 0.86, 0.62))
 	var stack_style := StyleBoxFlat.new()
 	stack_style.bg_color = Color(0.12, 0.09, 0.07, 0.96)
@@ -308,7 +458,7 @@ func _create_deck_stack_label(title: String, count: int) -> Label:
 
 func _create_stamina_panel() -> PanelContainer:
 	var panel := PanelContainer.new()
-	panel.custom_minimum_size = Vector2(116.0, 54.0)
+	panel.custom_minimum_size = Vector2(88.0, 40.0)
 	var panel_style := StyleBoxFlat.new()
 	panel_style.bg_color = Color(0.09, 0.11, 0.14, 0.96)
 	panel_style.border_color = Color(0.36, 0.74, 0.92)
@@ -323,14 +473,14 @@ func _create_stamina_panel() -> PanelContainer:
 	panel.add_theme_stylebox_override("panel", panel_style)
 
 	var margin := MarginContainer.new()
-	margin.add_theme_constant_override("margin_left", 8)
-	margin.add_theme_constant_override("margin_right", 8)
-	margin.add_theme_constant_override("margin_top", 6)
-	margin.add_theme_constant_override("margin_bottom", 6)
+	margin.add_theme_constant_override("margin_left", 5)
+	margin.add_theme_constant_override("margin_right", 5)
+	margin.add_theme_constant_override("margin_top", 3)
+	margin.add_theme_constant_override("margin_bottom", 3)
 	panel.add_child(margin)
 
 	var layout := VBoxContainer.new()
-	layout.add_theme_constant_override("separation", 4)
+	layout.add_theme_constant_override("separation", 3)
 	margin.add_child(layout)
 
 	var header := HBoxContainer.new()
@@ -339,20 +489,20 @@ func _create_stamina_panel() -> PanelContainer:
 	var title := Label.new()
 	title.text = "Stamina"
 	title.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	title.add_theme_font_size_override("font_size", 12)
+	title.add_theme_font_size_override("font_size", 9)
 	title.add_theme_color_override("font_color", Color(0.78, 0.94, 1.0))
 	header.add_child(title)
 
 	_stamina_value_label = Label.new()
 	_stamina_value_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
-	_stamina_value_label.add_theme_font_size_override("font_size", 12)
+	_stamina_value_label.add_theme_font_size_override("font_size", 9)
 	_stamina_value_label.add_theme_color_override("font_color", Color(0.78, 0.94, 1.0))
 	header.add_child(_stamina_value_label)
 
 	_stamina_bar = _create_stamina_progress_bar(
 		Color(0.07, 0.10, 0.13, 1.0),
 		Color(0.21, 0.66, 0.86, 1.0),
-		8.0
+		5.0
 	)
 	_stamina_bar.max_value = SKILL_STAMINA.MAX_STAMINA
 	layout.add_child(_stamina_bar)
@@ -418,8 +568,25 @@ func _build_skill_card_ui() -> void:
 	_skill_preview_border.visible = false
 	_skill_preview_border.z_index = 29
 	_skill_preview_border.width = 2.0
-	_skill_preview_border.default_color = Color(0.60, 0.92, 1.0, 0.76)
+	_skill_preview_border.default_color = SKILL_PREVIEW_VALID_BORDER
 	add_child(_skill_preview_border)
+
+	_skill_preview_centerline = Line2D.new()
+	_skill_preview_centerline.visible = false
+	_skill_preview_centerline.z_index = 30
+	_skill_preview_centerline.width = 1.4
+	_skill_preview_centerline.default_color = SKILL_PREVIEW_VALID_GLYPH
+	add_child(_skill_preview_centerline)
+
+	_skill_preview_rune_marks.clear()
+	for _index in range(SKILL_PREVIEW_RUNE_MARK_COUNT):
+		var mark := Line2D.new()
+		mark.visible = false
+		mark.z_index = 30
+		mark.width = 2.0
+		mark.default_color = SKILL_PREVIEW_VALID_GLYPH
+		_skill_preview_rune_marks.append(mark)
+		add_child(mark)
 
 	_skill_preview_label = Label.new()
 	_skill_preview_label.visible = false
@@ -633,11 +800,12 @@ func _create_skill_card(
 	description_text: String,
 	art_color: Color
 ) -> PanelContainer:
-	var card := SKILL_CARD_VIEW.create(skill_name, title, cost_text, description_text, art_color)
+	var card := SKILL_CARD_SCENE.instantiate() as SkillCardView
+	add_child(card)
+	card.setup(skill_name, title, cost_text, description_text, art_color)
 	card.gui_input.connect(_on_skill_card_gui_input.bind(card))
 	card.mouse_entered.connect(_on_skill_card_mouse_entered.bind(card))
 	card.mouse_exited.connect(_on_skill_card_mouse_exited.bind(card))
-	add_child(card)
 	return card
 
 
@@ -805,11 +973,14 @@ func _update_skill_preview(card: PanelContainer, mouse_position: Vector2) -> Vec
 	var center := preview_start + direction * maxf(max_screen_range - SKILL_PREVIEW_FORWARD_OFFSET, 0.0)
 	center = _clamp_skillshot_to_first_target(preview_start, center, direction)
 	var can_spend := _skill_stamina.can_spend(_get_card_stamina_cost(card))
-	var fill_color := Color(0.42, 0.78, 0.92, 1.0)
-	var border_color := Color(0.60, 0.92, 1.0, 0.42)
+	var pulse := 0.86 + sin(float(Time.get_ticks_msec()) * 0.007) * 0.14
+	var fill_color := SKILL_PREVIEW_VALID_FILL
+	var border_color := SKILL_PREVIEW_VALID_BORDER
+	var glyph_color := SKILL_PREVIEW_VALID_GLYPH
 	if not can_spend:
-		fill_color = Color(0.42, 0.42, 0.42, 0.55)
-		border_color = Color(0.62, 0.62, 0.62, 0.36)
+		fill_color = SKILL_PREVIEW_INVALID_FILL
+		border_color = SKILL_PREVIEW_INVALID_BORDER
+		glyph_color = SKILL_PREVIEW_INVALID_GLYPH
 
 	var forward := direction
 	var side := Vector2(-forward.y, forward.x) * (SKILL_PREVIEW_WIDTH * 0.5)
@@ -819,26 +990,33 @@ func _update_skill_preview(card: PanelContainer, mouse_position: Vector2) -> Vec
 		var end_fraction := float(index + 1) / float(segment_count)
 		var segment_start := preview_start.lerp(center, start_fraction)
 		var segment_end := preview_start.lerp(center, end_fraction)
+		var segment_side := side
+		if index == segment_count - 1:
+			segment_side *= 0.34
 		var segment_color := fill_color
-		segment_color.a *= float(SKILL_PREVIEW_OPACITY_STEPS[index])
+		segment_color.a *= float(SKILL_PREVIEW_OPACITY_STEPS[index]) * pulse
 		_skill_preview_rects[index].color = segment_color
 		_skill_preview_rects[index].polygon = PackedVector2Array([
 			segment_start - side,
-			segment_end - side,
-			segment_end + side,
+			segment_end - segment_side,
+			segment_end + segment_side,
 			segment_start + side,
 		])
 		_skill_preview_rects[index].visible = true
 	var border_points := PackedVector2Array([
 		preview_start - side,
-		center - side,
-		center + side,
+		center - side * 0.34,
+		center,
+		center + side * 0.34,
 		preview_start + side,
 		preview_start - side,
 	])
 
+	border_color.a *= 0.62 + pulse * 0.12
 	_skill_preview_border.default_color = border_color
 	_skill_preview_border.points = border_points
+	_skill_preview_border.width = 2.0
+	_update_skillshot_preview_glyphs(preview_start, center, forward, side, glyph_color, pulse)
 	_set_skill_preview_visible(true)
 	_skill_preview_label.visible = false
 	_heal_cursor_ring.visible = false
@@ -871,11 +1049,19 @@ func _update_strike_preview(
 		fan_points.append(center + Vector2(cos(angle), sin(angle)) * screen_range)
 
 	var can_spend := _skill_stamina.can_spend(_get_card_stamina_cost(card))
-	var fill_color := Color(0.42, 0.78, 0.92, 0.34)
-	var border_color := Color(0.60, 0.92, 1.0, 0.76)
+	var pulse := 0.86 + sin(float(Time.get_ticks_msec()) * 0.007) * 0.14
+	var fill_color := Color(
+		SKILL_PREVIEW_VALID_FILL.r,
+		SKILL_PREVIEW_VALID_FILL.g,
+		SKILL_PREVIEW_VALID_FILL.b,
+		0.30 * pulse
+	)
+	var border_color := SKILL_PREVIEW_VALID_BORDER
+	var glyph_color := SKILL_PREVIEW_VALID_GLYPH
 	if not can_spend:
-		fill_color = Color(0.42, 0.42, 0.42, 0.22)
-		border_color = Color(0.62, 0.62, 0.62, 0.46)
+		fill_color = SKILL_PREVIEW_INVALID_FILL
+		border_color = SKILL_PREVIEW_INVALID_BORDER
+		glyph_color = SKILL_PREVIEW_INVALID_GLYPH
 
 	for index in range(_skill_preview_rects.size()):
 		_skill_preview_rects[index].visible = index == 0
@@ -889,9 +1075,12 @@ func _update_strike_preview(
 		border_points.append(center + Vector2(cos(angle), sin(angle)) * screen_range)
 	border_points.append(center)
 
+	border_color.a *= 0.62 + pulse * 0.12
 	_skill_preview_border.default_color = border_color
 	_skill_preview_border.points = border_points
+	_skill_preview_border.width = 2.0
 	_skill_preview_border.visible = true
+	_update_strike_preview_glyphs(center, screen_range, direction, start_angle, end_angle, glyph_color, pulse)
 	_skill_preview_label.visible = false
 	_heal_cursor_ring.visible = false
 	_set_heal_target_floor_visible(false)
@@ -920,11 +1109,87 @@ func _clamp_skillshot_to_first_target(start: Vector2, end: Vector2, direction: V
 	return closest_hit
 
 
+func _update_skillshot_preview_glyphs(
+	start: Vector2,
+	end: Vector2,
+	forward: Vector2,
+	side: Vector2,
+	color: Color,
+	pulse: float
+) -> void:
+	if _skill_preview_centerline != null:
+		var line_color := color
+		line_color.a *= 0.72 + pulse * 0.18
+		_skill_preview_centerline.default_color = line_color
+		_skill_preview_centerline.width = 1.4
+		_skill_preview_centerline.points = PackedVector2Array([start, end])
+		_skill_preview_centerline.visible = true
+
+	var side_direction := side.normalized()
+	var lane_length := start.distance_to(end)
+	for index in range(_skill_preview_rune_marks.size()):
+		var fraction := float(index + 1) / float(_skill_preview_rune_marks.size() + 1)
+		var center := start.lerp(end, fraction)
+		var short_side := side_direction * (SKILL_PREVIEW_WIDTH * 0.24)
+		var long_side := side_direction * (SKILL_PREVIEW_WIDTH * 0.42)
+		var notch := forward * minf(10.0, lane_length * 0.04)
+		var mark := _skill_preview_rune_marks[index]
+		var mark_color := color
+		mark_color.a *= 0.54 + (0.22 * pulse)
+		mark.default_color = mark_color
+		mark.width = 2.0
+		if index % 2 == 0:
+			mark.points = PackedVector2Array([center - long_side, center - short_side + notch])
+		else:
+			mark.points = PackedVector2Array([center + short_side + notch, center + long_side])
+		mark.visible = true
+
+
+func _update_strike_preview_glyphs(
+	center: Vector2,
+	radius: float,
+	direction: Vector2,
+	start_angle: float,
+	end_angle: float,
+	color: Color,
+	pulse: float
+) -> void:
+	if _skill_preview_centerline != null:
+		var line_color := color
+		line_color.a *= 0.66 + pulse * 0.16
+		_skill_preview_centerline.default_color = line_color
+		_skill_preview_centerline.width = 1.4
+		_skill_preview_centerline.points = PackedVector2Array([center, center + direction * radius])
+		_skill_preview_centerline.visible = true
+
+	for index in range(_skill_preview_rune_marks.size()):
+		var fraction := float(index + 1) / float(_skill_preview_rune_marks.size() + 1)
+		var angle := lerpf(start_angle, end_angle, fraction)
+		var radial := Vector2(cos(angle), sin(angle))
+		var tangent := Vector2(-radial.y, radial.x)
+		var outer := center + radial * radius
+		var inner := center + radial * (radius - 16.0)
+		var mark := _skill_preview_rune_marks[index]
+		var mark_color := color
+		mark_color.a *= 0.50 + (0.24 * pulse)
+		mark.default_color = mark_color
+		mark.width = 2.0
+		if index % 3 == 0:
+			mark.points = PackedVector2Array([inner, outer])
+		else:
+			mark.points = PackedVector2Array([outer - tangent * 7.0, outer + tangent * 7.0])
+		mark.visible = true
+
+
 func _set_skill_preview_visible(is_visible: bool) -> void:
 	for preview_rect in _skill_preview_rects:
 		preview_rect.visible = is_visible
 	if _skill_preview_border != null:
 		_skill_preview_border.visible = is_visible
+	if _skill_preview_centerline != null:
+		_skill_preview_centerline.visible = is_visible
+	for mark in _skill_preview_rune_marks:
+		mark.visible = is_visible
 	if _skill_preview_label != null:
 		_skill_preview_label.visible = is_visible
 	if not is_visible:
@@ -937,6 +1202,10 @@ func _update_heal_target_preview(mouse_position: Vector2, _heal: int) -> Vector2
 	for preview_rect in _skill_preview_rects:
 		preview_rect.visible = false
 	_skill_preview_border.visible = false
+	if _skill_preview_centerline != null:
+		_skill_preview_centerline.visible = false
+	for mark in _skill_preview_rune_marks:
+		mark.visible = false
 	_skill_preview_label.visible = false
 	_update_ring_points(_heal_cursor_ring, mouse_position, HEAL_CURSOR_RADIUS, HEAL_CURSOR_SEGMENTS)
 	_heal_cursor_ring.visible = true
@@ -1118,7 +1387,7 @@ func _reset_skill_card_position(
 		offset_y -= CARD_HOVER_LIFT
 		z_order += 20
 
-	var target_scale := Vector2.ONE
+	var target_scale := Vector2(CARD_SCREEN_SCALE, CARD_SCREEN_SCALE)
 	if card == _hovered_skill_card and not _is_dragging_skill_card:
 		target_scale = Vector2(CARD_HOVER_SCALE, CARD_HOVER_SCALE)
 	elif _is_dragging_skill_card and card != _dragged_skill_card:
@@ -1130,7 +1399,8 @@ func _reset_skill_card_position(
 	card.anchor_bottom = 1.0
 	card.pivot_offset = CARD_SIZE * 0.5
 	card.z_index = z_order
-	var target_position := Vector2(offset_x, -CARD_SIZE.y - CARD_BOTTOM_MARGIN + offset_y)
+	var scaled_visual_height := CARD_SIZE.y * 0.5 * (1.0 + target_scale.y)
+	var target_position := Vector2(offset_x, -scaled_visual_height - CARD_BOTTOM_MARGIN + offset_y)
 	_animate_skill_card_to(card, target_position, rotation, target_scale)
 
 

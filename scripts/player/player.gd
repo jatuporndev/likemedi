@@ -34,7 +34,7 @@ const FIREBALL_PROJECTILE_FORWARD_OFFSET := 18.0
 const STUN_SECONDS := 0.3
 const DRAW_ORDER_FOOT_OFFSET := 34.0
 const DRAW_ORDER_MIN := -4096
-const DRAW_ORDER_MAX := 4096
+const DRAW_ORDER_MAX := 4095
 const SPELL_CAST_FLOOR_OFFSET := Vector2(0.0, 46.0)
 const SPELL_CAST_FLOOR_RADIUS := 34.0
 const SPELL_CAST_FLOOR_Y_SCALE := 0.52
@@ -43,10 +43,16 @@ const SPELL_CAST_MARK_COUNT := 12
 const SPELL_CAST_SECONDS := 0.46
 const SPELL_CAST_COLOR := Color(1.0, 1.0, 1.0, 1.0)
 const HEAL_CAST_COLOR := Color(0.42, 1.0, 0.58, 1.0)
+const REVIVE_WAIT_SECONDS := 3.0
+const REVIVE_HEALTH_RATIO := 1.0
+const REVIVE_FALLBACK_POSITION := Vector2(240, 220)
+const SPAWN_ANCHOR_NODE_NAME := "SpawnAnchor"
 
 var _server_input := Vector2.ZERO
 var _health := 100
 var _max_health := 100
+var _is_dead := false
+var _revive_wait_time := 0.0
 var _attack_time := 0.0
 var _stun_time := 0.0
 var _cast_time := 0.0
@@ -73,6 +79,10 @@ var _spell_cast_ring: Line2D
 var _spell_cast_inner_ring: Line2D
 var _spell_cast_rune_ring: Line2D
 var _spell_cast_marks: Array[Line2D] = []
+var _death_overlay_layer: CanvasLayer
+var _death_overlay: PanelContainer
+var _death_message: Label
+var _revive_button: Button
 
 
 func _ready() -> void:
@@ -97,10 +107,14 @@ func _ready() -> void:
 	if camera.enabled:
 		camera.make_current()
 	_build_chat_bubble()
+	if _is_local_player():
+		_build_death_overlay()
 	NetworkManager.chat_message_received.connect(_on_chat_message_received)
 
 
 func _physics_process(delta: float) -> void:
+	_update_death_overlay(delta)
+
 	if _stun_time > 0.0:
 		_stun_time = max(_stun_time - delta, 0.0)
 	if _cast_time > 0.0:
@@ -117,11 +131,14 @@ func _physics_process(delta: float) -> void:
 			aim_direction = _read_mouse_aim_direction()
 			facing_left = aim_direction.x < 0.0
 
-		if _stun_time > 0.0 or _cast_time > 0.0:
+		if _is_dead or _stun_time > 0.0 or _cast_time > 0.0:
 			input_vector = Vector2.ZERO
 
 		velocity = input_vector * speed
-		move_and_slide()
+		if not _is_dead:
+			move_and_slide()
+		else:
+			velocity = Vector2.ZERO
 		_visual_velocity = velocity
 		_facing_left = facing_left
 		_aim_direction = aim_direction
@@ -150,6 +167,8 @@ func _physics_process(delta: float) -> void:
 func _unhandled_input(event: InputEvent) -> void:
 	if not _is_local_player():
 		return
+	if _is_dead:
+		return
 	if event is InputEventMouseButton and event.button_index == MOUSE_BUTTON_LEFT and event.pressed:
 		try_attack()
 		get_viewport().set_input_as_handled()
@@ -164,6 +183,8 @@ func try_fireball() -> void:
 
 
 func try_skill(skill_name: String, target_peer_id: int = -1) -> void:
+	if _is_dead:
+		return
 	if _attack_time > 0.0 or _stun_time > 0.0 or _cast_time > 0.0:
 		return
 	var definition := SKILL_CARD_DATABASE.get_definition(skill_name)
@@ -363,6 +384,7 @@ func _sync_state(
 	position = server_position
 	_update_draw_order()
 	_health = server_health
+	_set_dead(_health <= 0)
 	_visual_velocity = server_velocity
 	_facing_left = facing_left
 	_aim_direction = aim_direction.normalized()
@@ -376,11 +398,12 @@ func _apply_test_attack_damage() -> void:
 
 
 func _apply_test_skill_damage(skill_name: String, amount: int, attack_range: float) -> void:
-	var target := _find_test_attack_target(skill_name, attack_range)
-	if target == null:
+	var targets := _find_test_attack_targets(skill_name, attack_range)
+	if targets.is_empty():
 		return
 
-	target.call("_take_test_damage", amount, self)
+	for target in targets:
+		target.call("_take_test_damage", amount, self)
 
 
 func _apply_skill_effect(
@@ -428,6 +451,8 @@ func _find_heal_target(target_peer_id: int = -1) -> Node:
 func _receive_heal(amount: int) -> void:
 	if not multiplayer.is_server() and multiplayer.multiplayer_peer != null:
 		return
+	if _is_dead:
+		return
 
 	var healing_done := mini(maxi(amount, 0), _max_health - _health)
 	_health += healing_done
@@ -441,15 +466,17 @@ func _receive_heal(amount: int) -> void:
 	# Do not show a bubble on the healed target.
 
 
-func _find_test_attack_target(skill_name: String, attack_range: float) -> Node:
-	var closest_target: Node = null
-	var closest_distance_squared := attack_range * attack_range
+func _find_test_attack_targets(skill_name: String, attack_range: float) -> Array[Node]:
+	var targets: Array[Node] = []
 	var forward := _aim_direction.normalized()
 	if forward.length_squared() <= 0.0:
 		forward = Vector2.LEFT if _facing_left else Vector2.RIGHT
 	var attack_origin := global_position
 	if skill_name == STRIKE_SKILL_NAME:
 		attack_origin += forward * STRIKE_ATTACK_FORWARD_OFFSET
+	var max_distance_squared := attack_range * attack_range
+	var closest_target: Node = null
+	var closest_distance_squared := max_distance_squared
 	for node in get_tree().get_nodes_in_group("damageable"):
 		if node == self or not node.has_method("_take_test_damage"):
 			continue
@@ -465,20 +492,31 @@ func _find_test_attack_target(skill_name: String, attack_range: float) -> Node:
 			continue
 
 		var distance_squared := to_target.length_squared()
-		if distance_squared <= closest_distance_squared:
+		if distance_squared > max_distance_squared:
+			continue
+
+		if skill_name == STRIKE_SKILL_NAME:
+			targets.append(node)
+		elif distance_squared <= closest_distance_squared:
 			closest_distance_squared = distance_squared
 			closest_target = node
 
-	return closest_target
+	if skill_name != STRIKE_SKILL_NAME and closest_target != null:
+		targets.append(closest_target)
+	return targets
 
 
 func _take_test_damage(amount: int, _attacker: Node = null) -> void:
 	if not multiplayer.is_server() and multiplayer.multiplayer_peer != null:
 		return
+	if _is_dead:
+		return
 
 	var damage_dealt := mini(maxi(amount, 0), _health)
 	_health = maxi(_health - amount, 0)
 	health_bar.value = _health
+	if _health <= 0:
+		_die()
 	if damage_dealt > 0:
 		if multiplayer.multiplayer_peer == null:
 			_show_damage_number(damage_dealt)
@@ -489,7 +527,7 @@ func _take_test_damage(amount: int, _attacker: Node = null) -> void:
 
 
 func _read_input() -> Vector2:
-	if _cast_time > 0.0:
+	if _is_dead or _cast_time > 0.0:
 		return Vector2.ZERO
 
 	var focused_control := get_viewport().gui_get_focus_owner()
@@ -504,6 +542,12 @@ func _is_local_player() -> bool:
 
 
 func _update_animation(delta: float) -> void:
+	if _is_dead:
+		_set_animation("dead")
+		sprite.flip_h = _facing_left
+		sprite.frame = 0
+		return
+
 	var is_running := _visual_velocity.length_squared() > 1.0
 	var animation_name := "run" if is_running else "idle"
 	var fps := RUN_FPS if is_running else IDLE_FPS
@@ -540,6 +584,13 @@ func _set_animation(animation_name: String) -> void:
 	elif animation_name == "hurt" and hurt_texture != null:
 		sprite.texture = hurt_texture
 		sprite.hframes = HURT_FRAME_COUNT
+	elif animation_name == "dead":
+		if hurt_texture != null:
+			sprite.texture = hurt_texture
+			sprite.hframes = HURT_FRAME_COUNT
+		elif idle_texture != null:
+			sprite.texture = idle_texture
+			sprite.hframes = FRAME_COUNT
 	elif animation_name == "run" and run_texture != null:
 		sprite.texture = run_texture
 		sprite.hframes = FRAME_COUNT
@@ -547,6 +598,7 @@ func _set_animation(animation_name: String) -> void:
 		sprite.texture = idle_texture
 		sprite.hframes = FRAME_COUNT
 	sprite.frame = 0
+	sprite.rotation_degrees = 90.0 if animation_name == "dead" else 0.0
 
 
 func _update_name_hover() -> void:
@@ -610,7 +662,7 @@ func _apply_stamina_bar_style() -> void:
 	stamina_bar.add_theme_stylebox_override("background", background_style)
 
 	var fill_style := StyleBoxFlat.new()
-	fill_style.bg_color = Color(0.21, 0.66, 0.86)
+	fill_style.bg_color = Color(0.94, 0.78, 0.20)
 	fill_style.corner_radius_top_left = 2
 	fill_style.corner_radius_top_right = 2
 	fill_style.corner_radius_bottom_left = 2
@@ -761,6 +813,181 @@ func _update_cast_progress_bar() -> void:
 func _set_cast_progress_visible(is_visible: bool) -> void:
 	if _cast_progress_bar != null:
 		_cast_progress_bar.visible = is_visible
+
+
+func _die() -> void:
+	if _is_dead:
+		return
+
+	_set_dead(true)
+	_health = 0
+	health_bar.value = _health
+	velocity = Vector2.ZERO
+	_server_input = Vector2.ZERO
+	_attack_time = 0.0
+	_cast_time = 0.0
+	_stun_time = 0.0
+	_set_cast_progress_visible(false)
+	_set_spell_cast_floor_visible(false)
+	if multiplayer.multiplayer_peer != null:
+		_sync_state.rpc(position, _health, Vector2.ZERO, _facing_left, _aim_direction, _stun_time)
+
+
+func _set_dead(is_dead: bool) -> void:
+	if _is_dead == is_dead:
+		return
+
+	_is_dead = is_dead
+	if _is_dead:
+		_visual_velocity = Vector2.ZERO
+		_revive_wait_time = REVIVE_WAIT_SECONDS
+		_set_death_overlay_visible(_is_local_player())
+	else:
+		_revive_wait_time = 0.0
+		_set_death_overlay_visible(false)
+		sprite.rotation_degrees = 0.0
+		_set_animation("idle")
+
+
+func _update_death_overlay(delta: float) -> void:
+	if not _is_dead:
+		return
+
+	if _revive_wait_time > 0.0:
+		_revive_wait_time = maxf(_revive_wait_time - delta, 0.0)
+
+	if not _is_local_player():
+		return
+
+	if _death_message != null:
+		if _revive_wait_time > 0.0:
+			_death_message.text = "You died\nRevive available in %d" % ceili(_revive_wait_time)
+		else:
+			_death_message.text = "You died"
+	if _revive_button != null:
+		_revive_button.disabled = _revive_wait_time > 0.0
+		_revive_button.visible = _revive_wait_time <= 0.0
+
+
+func _build_death_overlay() -> void:
+	_death_overlay_layer = CanvasLayer.new()
+	_death_overlay_layer.layer = 60
+	add_child(_death_overlay_layer)
+
+	var root := Control.new()
+	root.set_anchors_preset(Control.PRESET_FULL_RECT)
+	root.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_death_overlay_layer.add_child(root)
+
+	_death_overlay = PanelContainer.new()
+	_death_overlay.visible = false
+	_death_overlay.mouse_filter = Control.MOUSE_FILTER_STOP
+	_death_overlay.set_anchors_preset(Control.PRESET_CENTER_BOTTOM)
+	_death_overlay.offset_left = -150.0
+	_death_overlay.offset_top = -360.0
+	_death_overlay.offset_right = 150.0
+	_death_overlay.offset_bottom = -252.0
+	root.add_child(_death_overlay)
+
+	var panel_style := StyleBoxFlat.new()
+	panel_style.bg_color = Color(0.09, 0.05, 0.04, 0.94)
+	panel_style.border_color = Color(0.72, 0.48, 0.22, 0.96)
+	panel_style.border_width_left = 2
+	panel_style.border_width_top = 2
+	panel_style.border_width_right = 2
+	panel_style.border_width_bottom = 2
+	panel_style.corner_radius_top_left = 4
+	panel_style.corner_radius_top_right = 4
+	panel_style.corner_radius_bottom_left = 4
+	panel_style.corner_radius_bottom_right = 4
+	_death_overlay.add_theme_stylebox_override("panel", panel_style)
+
+	var margin := MarginContainer.new()
+	margin.add_theme_constant_override("margin_left", 14)
+	margin.add_theme_constant_override("margin_right", 14)
+	margin.add_theme_constant_override("margin_top", 12)
+	margin.add_theme_constant_override("margin_bottom", 12)
+	_death_overlay.add_child(margin)
+
+	var layout := VBoxContainer.new()
+	layout.add_theme_constant_override("separation", 10)
+	margin.add_child(layout)
+
+	_death_message = Label.new()
+	_death_message.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	_death_message.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+	_death_message.add_theme_color_override("font_color", Color(1.0, 0.84, 0.55))
+	_death_message.add_theme_font_size_override("font_size", 18)
+	layout.add_child(_death_message)
+
+	_revive_button = Button.new()
+	_revive_button.text = "Revive"
+	_revive_button.disabled = true
+	_revive_button.visible = false
+	_revive_button.pressed.connect(_on_revive_button_pressed)
+	layout.add_child(_revive_button)
+
+
+func _set_death_overlay_visible(is_visible: bool) -> void:
+	if _death_overlay != null:
+		_death_overlay.visible = is_visible
+
+
+func _on_revive_button_pressed() -> void:
+	if not _is_dead or _revive_wait_time > 0.0:
+		return
+
+	if multiplayer.multiplayer_peer == null:
+		_revive_at_center()
+	elif multiplayer.is_server():
+		_revive_at_center()
+	else:
+		_request_revive.rpc_id(1)
+
+
+@rpc("any_peer", "reliable")
+func _request_revive() -> void:
+	if not multiplayer.is_server():
+		return
+	if multiplayer.get_remote_sender_id() != peer_id:
+		return
+	if not _is_dead or _revive_wait_time > 0.0:
+		return
+
+	_revive_at_center()
+
+
+func _revive_at_center() -> void:
+	if not multiplayer.is_server() and multiplayer.multiplayer_peer != null:
+		return
+
+	position = _get_center_respawn_position()
+	_health = maxi(int(round(float(_max_health) * REVIVE_HEALTH_RATIO)), 1)
+	health_bar.value = _health
+	velocity = Vector2.ZERO
+	_server_input = Vector2.ZERO
+	_set_dead(false)
+	_update_draw_order()
+	if multiplayer.multiplayer_peer != null:
+		_sync_state.rpc(position, _health, Vector2.ZERO, _facing_left, _aim_direction, 0.0)
+
+
+func _get_center_respawn_position() -> Vector2:
+	var players_parent := get_parent() as Node2D
+	if players_parent == null:
+		return REVIVE_FALLBACK_POSITION
+
+	var world := players_parent.get_parent()
+	if world == null:
+		return REVIVE_FALLBACK_POSITION
+
+	var spawn_point := world.get_node_or_null("PlayerSpawnPoint") as Node2D
+	if spawn_point == null:
+		return REVIVE_FALLBACK_POSITION
+
+	var spawn_anchor := spawn_point.get_node_or_null(SPAWN_ANCHOR_NODE_NAME) as Node2D
+	var respawn_global_position := spawn_anchor.global_position if spawn_anchor != null else spawn_point.global_position
+	return players_parent.to_local(respawn_global_position)
 
 
 func _build_spell_cast_floor_circle() -> void:

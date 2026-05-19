@@ -1,32 +1,33 @@
-[gd_scene load_steps=6 format=3]
+[gd_scene format=3 uid="uid://becnqdjnhtk4k"]
 
-[ext_resource type="Script" path="res://scripts/enemies/enemy_bot.gd" id="1_enemy_bot"]
-[ext_resource type="Texture2D" path="res://sprites/enemis/e1/Run.png" id="2_run"]
-[ext_resource type="Texture2D" path="res://sprites/enemis/e1/Attack1.png" id="3_attack"]
-[ext_resource type="Texture2D" path="res://sprites/enemis/e1/Idle.png" id="4_idle"]
+[ext_resource type="Script" uid="uid://dpk526p0s4drt" path="res://scripts/enemies/enemy_bot.gd" id="1_enemy_bot"]
+[ext_resource type="Texture2D" uid="uid://dxf2drtp8uwjg" path="res://sprites/enemis/e1/Run.png" id="2_run"]
+[ext_resource type="Texture2D" uid="uid://ic0lp7bufbaf" path="res://sprites/enemis/e1/Attack1.png" id="3_attack"]
+[ext_resource type="Texture2D" uid="uid://rtodcg3jbbn1" path="res://sprites/enemis/e1/Idle.png" id="4_idle"]
 
-[sub_resource type="CapsuleShape2D" id="CapsuleShape2D_enemy"]
-radius = 12.0
-height = 34.0
+[sub_resource type="CapsuleShape2D" id="CapsuleShape2D_86bf0"]
+radius = 16.0
+height = 42.0
 
-[node name="EnemyBot" type="CharacterBody2D"]
+[node name="EnemyBot" type="CharacterBody2D" unique_id=382361539]
 script = ExtResource("1_enemy_bot")
 idle_texture = ExtResource("4_idle")
 run_texture = ExtResource("2_run")
 attack_texture = ExtResource("3_attack")
 
-[node name="Sprite2D" type="Sprite2D" parent="."]
+[node name="Sprite2D" type="Sprite2D" parent="." unique_id=1280015261]
+texture_filter = 1
 texture = ExtResource("4_idle")
 hframes = 11
 
-[node name="CollisionShape2D" type="CollisionShape2D" parent="."]
-position = Vector2(0, 34)
-shape = SubResource("CapsuleShape2D_enemy")
+[node name="CollisionShape2D" type="CollisionShape2D" parent="." unique_id=1997251120]
+position = Vector2(4, 10)
+shape = SubResource("CapsuleShape2D_86bf0")
 
-[node name="HealthBar" type="ProgressBar" parent="."]
+[node name="HealthBar" type="ProgressBar" parent="." unique_id=1271055496]
 offset_left = -30.0
-offset_top = 54.0
+offset_top = 35.0
 offset_right = 30.0
-offset_bottom = 58.0
+offset_bottom = 39.0
 value = 60.0
 show_percentage = false

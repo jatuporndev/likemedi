@@ -18,32 +18,32 @@ func _build_ui() -> void:
 	add_child(background)
 
 	var panel := PanelContainer.new()
-	panel.custom_minimum_size = Vector2(420, 0)
+	panel.custom_minimum_size = Vector2(350, 0)
 	panel.anchor_left = 0.5
 	panel.anchor_top = 0.5
 	panel.anchor_right = 0.5
 	panel.anchor_bottom = 0.5
-	panel.offset_left = -210
-	panel.offset_top = -230
-	panel.offset_right = 210
-	panel.offset_bottom = 230
+	panel.offset_left = -175
+	panel.offset_top = -192
+	panel.offset_right = 175
+	panel.offset_bottom = 192
 	add_child(panel)
 
 	var margin := MarginContainer.new()
-	margin.add_theme_constant_override("margin_left", 28)
-	margin.add_theme_constant_override("margin_top", 24)
-	margin.add_theme_constant_override("margin_right", 28)
-	margin.add_theme_constant_override("margin_bottom", 24)
+	margin.add_theme_constant_override("margin_left", 23)
+	margin.add_theme_constant_override("margin_top", 20)
+	margin.add_theme_constant_override("margin_right", 23)
+	margin.add_theme_constant_override("margin_bottom", 20)
 	panel.add_child(margin)
 
 	var layout := VBoxContainer.new()
-	layout.add_theme_constant_override("separation", 12)
+	layout.add_theme_constant_override("separation", 10)
 	margin.add_child(layout)
 
 	var title := Label.new()
 	title.text = "Like Medieval"
 	title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	title.add_theme_font_size_override("font_size", 34)
+	title.add_theme_font_size_override("font_size", 28)
 	layout.add_child(title)
 
 	_name_edit = LineEdit.new()

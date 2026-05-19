@@ -34,10 +34,18 @@ HSessions="*res://addons/epic-online-services-godot/heos/hsessions.gd"
 
 window/size/viewport_width=1280
 window/size/viewport_height=720
+window/size/mode=2
+window/stretch/mode="canvas_items"
+window/stretch/aspect="expand"
+window/stretch/scale_mode="fractional"
 
 [editor_plugins]
 
 enabled=PackedStringArray("res://addons/epic-online-services-godot/plugin.cfg")
+
+[gui]
+
+theme/custom="res://assets/fonts/game_theme.tres"
 
 [input]
 
