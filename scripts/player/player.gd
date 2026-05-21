@@ -29,7 +29,12 @@ const CHAT_BUBBLE_SECONDS := 4.0
 const ACTION_BUBBLE_SECONDS := 1.0
 const HOVER_RECT := Rect2(Vector2(-32.0, -48.0), Vector2(64.0, 112.0))
 const STRIKE_SKILL_NAME := "strike"
+const SWIFT_RAID_SKILL_NAME := "swift_raid"
+const FAST_BOI_SKILL_NAME := "fast_boi"
 const STRIKE_ATTACK_FORWARD_OFFSET := 28.0
+const SWIFT_RAID_HIT_COUNT := 3
+const SWIFT_RAID_FORWARD_OFFSET := 22.0
+const SWIFT_RAID_WIDTH := 46.0
 const FIREBALL_PROJECTILE_FORWARD_OFFSET := 18.0
 const STUN_SECONDS := 0.3
 const DRAW_ORDER_FOOT_OFFSET := 34.0
@@ -43,6 +48,7 @@ const SPELL_CAST_MARK_COUNT := 12
 const SPELL_CAST_SECONDS := 0.46
 const SPELL_CAST_COLOR := Color(1.0, 1.0, 1.0, 1.0)
 const HEAL_CAST_COLOR := Color(0.42, 1.0, 0.58, 1.0)
+const BUFF_CAST_COLOR := Color(0.32, 0.72, 1.0, 1.0)
 const REVIVE_WAIT_SECONDS := 3.0
 const REVIVE_HEALTH_RATIO := 1.0
 const REVIVE_FALLBACK_POSITION := Vector2(240, 220)
@@ -68,6 +74,12 @@ var _server_facing_left := false
 var _server_aim_direction := Vector2.RIGHT
 var _facing_left := false
 var _aim_direction := Vector2.RIGHT
+var _is_skill_aiming_active := false
+var _skill_facing_lock_time := 0.0
+var _skill_facing_lock_left := false
+var _fast_boi_time := 0.0
+var _fast_boi_duration := 0.0
+var _fast_boi_speed_multiplier := 1.0
 var _chat_bubble_box: PanelContainer
 var _chat_bubble: Label
 var _chat_bubble_tail: Polygon2D
@@ -121,6 +133,13 @@ func _physics_process(delta: float) -> void:
 		_cast_time = maxf(_cast_time - delta, 0.0)
 		if _cast_time <= 0.0:
 			_set_cast_progress_visible(false)
+	if _skill_facing_lock_time > 0.0:
+		_skill_facing_lock_time = maxf(_skill_facing_lock_time - delta, 0.0)
+	if _fast_boi_time > 0.0:
+		_fast_boi_time = maxf(_fast_boi_time - delta, 0.0)
+		if _fast_boi_time <= 0.0:
+			_fast_boi_duration = 0.0
+			_fast_boi_speed_multiplier = 1.0
 
 	if multiplayer.is_server():
 		var input_vector := _server_input
@@ -129,12 +148,12 @@ func _physics_process(delta: float) -> void:
 		if peer_id == multiplayer.get_unique_id():
 			input_vector = _read_input()
 			aim_direction = _read_mouse_aim_direction()
-			facing_left = aim_direction.x < 0.0
+			facing_left = _resolve_facing_left(input_vector, aim_direction, _facing_left)
 
 		if _is_dead or _stun_time > 0.0 or _cast_time > 0.0:
 			input_vector = Vector2.ZERO
 
-		velocity = input_vector * speed
+		velocity = input_vector * speed * _get_move_speed_multiplier()
 		if not _is_dead:
 			move_and_slide()
 		else:
@@ -142,12 +161,22 @@ func _physics_process(delta: float) -> void:
 		_visual_velocity = velocity
 		_facing_left = facing_left
 		_aim_direction = aim_direction
-		_sync_state.rpc(position, _health, velocity, facing_left, aim_direction, _stun_time)
+		_sync_state.rpc(
+			position,
+			_health,
+			velocity,
+			facing_left,
+			aim_direction,
+			_stun_time,
+			_fast_boi_time,
+			_fast_boi_duration
+		)
 	else:
 		if _is_local_player():
 			_aim_direction = _read_mouse_aim_direction()
-			_facing_left = _aim_direction.x < 0.0
-			_send_input.rpc_id(1, _read_input(), _facing_left, _aim_direction)
+			var input_vector := _read_input()
+			_facing_left = _resolve_facing_left(input_vector, _aim_direction, _facing_left)
+			_send_input.rpc_id(1, input_vector, _facing_left, _aim_direction)
 
 	if _attack_time > 0.0:
 		_attack_time = max(_attack_time - delta, 0.0)
@@ -182,6 +211,10 @@ func try_fireball() -> void:
 	try_skill("fireball")
 
 
+func set_skill_aiming_active(is_active: bool) -> void:
+	_is_skill_aiming_active = is_active
+
+
 func try_skill(skill_name: String, target_peer_id: int = -1) -> void:
 	if _is_dead:
 		return
@@ -194,8 +227,16 @@ func try_skill(skill_name: String, target_peer_id: int = -1) -> void:
 	var damage := int(definition["damage"])
 	var heal := int(definition["heal"])
 	var attack_range := float(definition["range"])
+	var buff_speed_percent := float(definition["buff_speed_percent"])
+	var buff_duration := float(definition["buff_duration"])
 	var cast_origin := global_position
 	var cast_direction := _aim_direction
+	if cast_direction.length_squared() <= 0.0:
+		cast_direction = Vector2.LEFT if _facing_left else Vector2.RIGHT
+	var facing_lock_duration := cast_time + _attack_animation_seconds()
+	if skill_name == SWIFT_RAID_SKILL_NAME:
+		facing_lock_duration = cast_time + (_attack_animation_seconds() * SWIFT_RAID_HIT_COUNT)
+	_lock_skill_facing(cast_direction, facing_lock_duration)
 	if multiplayer.multiplayer_peer == null:
 		_play_skill(bubble_text, cast_time)
 		_play_skill_cast_visuals(skill_type, cast_time)
@@ -209,6 +250,8 @@ func try_skill(skill_name: String, target_peer_id: int = -1) -> void:
 			damage,
 			heal,
 			attack_range,
+			buff_speed_percent,
+			buff_duration,
 			target_peer_id,
 			cast_origin,
 			cast_direction,
@@ -228,6 +271,8 @@ func try_skill(skill_name: String, target_peer_id: int = -1) -> void:
 			damage,
 			heal,
 			attack_range,
+			buff_speed_percent,
+			buff_duration,
 			target_peer_id,
 			cast_origin,
 			cast_direction,
@@ -301,6 +346,8 @@ func _play_skill_cast_visuals(skill_type: String, cast_time: float) -> void:
 		_play_spell_cast_floor_circle(maxf(cast_time, SPELL_CAST_SECONDS), SPELL_CAST_COLOR)
 	elif skill_type == "heal":
 		_play_spell_cast_floor_circle(maxf(cast_time, SPELL_CAST_SECONDS), HEAL_CAST_COLOR)
+	elif skill_type == "buff":
+		_play_spell_cast_floor_circle(maxf(cast_time, SPELL_CAST_SECONDS), BUFF_CAST_COLOR)
 
 
 func _play_skill_cast_visuals_rpc(skill_type: String, cast_time: float) -> void:
@@ -308,6 +355,8 @@ func _play_skill_cast_visuals_rpc(skill_type: String, cast_time: float) -> void:
 		_play_spell_cast_floor_circle.rpc(maxf(cast_time, SPELL_CAST_SECONDS), SPELL_CAST_COLOR)
 	elif skill_type == "heal":
 		_play_spell_cast_floor_circle.rpc(maxf(cast_time, SPELL_CAST_SECONDS), HEAL_CAST_COLOR)
+	elif skill_type == "buff":
+		_play_spell_cast_floor_circle.rpc(maxf(cast_time, SPELL_CAST_SECONDS), BUFF_CAST_COLOR)
 
 
 func _finish_skill_cast(
@@ -316,6 +365,8 @@ func _finish_skill_cast(
 	damage: int,
 	heal: int,
 	attack_range: float,
+	buff_speed_percent: float,
+	buff_duration: float,
 	target_peer_id: int,
 	cast_origin: Vector2,
 	cast_direction: Vector2,
@@ -331,7 +382,16 @@ func _finish_skill_cast(
 			_play_fireball_projectile(cast_origin, cast_direction, damage)
 		else:
 			_play_fireball_projectile.rpc(cast_origin, cast_direction, damage)
-	_apply_skill_effect(skill_name, skill_type, damage, heal, attack_range, target_peer_id)
+	_apply_skill_effect(
+		skill_name,
+		skill_type,
+		damage,
+		heal,
+		attack_range,
+		buff_speed_percent,
+		buff_duration,
+		target_peer_id
+	)
 
 
 @rpc("authority", "call_local", "reliable")
@@ -379,7 +439,9 @@ func _sync_state(
 	server_velocity: Vector2,
 	facing_left: bool,
 	aim_direction: Vector2,
-	stun_time: float
+	stun_time: float,
+	fast_boi_time: float = 0.0,
+	fast_boi_duration: float = 0.0
 ) -> void:
 	position = server_position
 	_update_draw_order()
@@ -389,6 +451,9 @@ func _sync_state(
 	_facing_left = facing_left
 	_aim_direction = aim_direction.normalized()
 	_stun_time = stun_time
+	_fast_boi_time = maxf(fast_boi_time, 0.0)
+	_fast_boi_duration = maxf(fast_boi_duration, 0.0)
+	_fast_boi_speed_multiplier = 1.15 if _fast_boi_time > 0.0 else 1.0
 	health_bar.value = _health
 
 
@@ -412,16 +477,115 @@ func _apply_skill_effect(
 	damage: int,
 	heal: int,
 	attack_range: float,
+	buff_speed_percent: float,
+	buff_duration: float,
 	target_peer_id: int = -1
 ) -> void:
 	if skill_type == "heal":
 		_heal_target(heal, target_peer_id)
 		return
+	if skill_type == "buff":
+		_apply_buff_skill(skill_name, buff_speed_percent, buff_duration, target_peer_id)
+		return
 
 	if skill_name == "fireball":
 		return
+	if skill_name == SWIFT_RAID_SKILL_NAME:
+		_apply_swift_raid_damage(damage, attack_range)
+		return
 
 	_apply_test_skill_damage(skill_name, damage, attack_range)
+
+
+func _apply_buff_skill(
+	skill_name: String,
+	buff_speed_percent: float,
+	buff_duration: float,
+	target_peer_id: int = -1
+) -> void:
+	if skill_name != FAST_BOI_SKILL_NAME or buff_duration <= 0.0:
+		return
+
+	var target := _find_player_skill_target(target_peer_id)
+	if target == null or not target.has_method("_receive_fast_boi_buff"):
+		return
+
+	target.call("_receive_fast_boi_buff", buff_speed_percent, buff_duration)
+
+
+func _receive_fast_boi_buff(buff_speed_percent: float, buff_duration: float) -> void:
+	if not multiplayer.is_server() and multiplayer.multiplayer_peer != null:
+		return
+	if _is_dead:
+		return
+
+	_fast_boi_duration = buff_duration
+	_fast_boi_time = buff_duration
+	_fast_boi_speed_multiplier = 1.0 + maxf(buff_speed_percent, 0.0) / 100.0
+
+
+func _get_move_speed_multiplier() -> float:
+	return _fast_boi_speed_multiplier if _fast_boi_time > 0.0 else 1.0
+
+
+func _apply_swift_raid_damage(amount: int, attack_range: float) -> void:
+	var hit_interval := _attack_animation_seconds()
+	for hit_index in range(SWIFT_RAID_HIT_COUNT):
+		if hit_index > 0:
+			await get_tree().create_timer(hit_interval).timeout
+		if not is_inside_tree():
+			return
+		var target := _find_swift_raid_target(attack_range)
+		if target != null:
+			target.call("_take_test_damage", amount, self)
+		if multiplayer.multiplayer_peer == null:
+			_play_swift_raid_hit_animation()
+		elif multiplayer.is_server():
+			_play_swift_raid_hit_animation.rpc()
+
+
+@rpc("authority", "call_local", "reliable")
+func _play_swift_raid_hit_animation() -> void:
+	_cast_time = 0.0
+	_set_cast_progress_visible(false)
+	_attack_time = _attack_animation_seconds()
+	if _current_animation == "attack":
+		_current_animation = ""
+	_set_animation("attack")
+
+
+func _find_swift_raid_target(attack_range: float) -> Node:
+	var forward := _aim_direction.normalized()
+	if forward.length_squared() <= 0.0:
+		forward = Vector2.LEFT if _facing_left else Vector2.RIGHT
+	var attack_origin := global_position + forward * SWIFT_RAID_FORWARD_OFFSET
+	var closest_target: Node = null
+	var closest_forward_distance := attack_range
+
+	for node in get_tree().get_nodes_in_group("damageable"):
+		if node == self or not node.has_method("_take_test_damage"):
+			continue
+
+		var target := node as Node2D
+		if target == null:
+			continue
+		if int(node.get("_health")) <= 0:
+			continue
+
+		var to_target := target.global_position - attack_origin
+		var forward_distance := to_target.dot(forward)
+		if forward_distance < 0.0 or forward_distance > attack_range:
+			continue
+
+		var side_distance := absf(to_target.cross(forward))
+		if side_distance > SWIFT_RAID_WIDTH:
+			continue
+
+		if closest_target == null or forward_distance < closest_forward_distance:
+			closest_target = node
+			closest_forward_distance = forward_distance
+
+	return closest_target
 
 
 func _heal_target(amount: int, target_peer_id: int = -1) -> void:
@@ -436,6 +600,10 @@ func _heal_target(amount: int, target_peer_id: int = -1) -> void:
 
 
 func _find_heal_target(target_peer_id: int = -1) -> Node:
+	return _find_player_skill_target(target_peer_id)
+
+
+func _find_player_skill_target(target_peer_id: int = -1) -> Node:
 	var players := get_parent()
 	if players == null:
 		return self
@@ -662,7 +830,7 @@ func _apply_stamina_bar_style() -> void:
 	stamina_bar.add_theme_stylebox_override("background", background_style)
 
 	var fill_style := StyleBoxFlat.new()
-	fill_style.bg_color = Color(0.94, 0.78, 0.20)
+	fill_style.bg_color = Color(0.21, 0.66, 0.86)
 	fill_style.corner_radius_top_left = 2
 	fill_style.corner_radius_top_right = 2
 	fill_style.corner_radius_bottom_left = 2
@@ -672,6 +840,28 @@ func _apply_stamina_bar_style() -> void:
 
 func _read_mouse_facing_left() -> bool:
 	return _read_mouse_aim_direction().x < 0.0
+
+
+func _resolve_facing_left(input_vector: Vector2, aim_direction: Vector2, fallback_facing_left: bool) -> bool:
+	if _skill_facing_lock_time > 0.0:
+		return _skill_facing_lock_left
+	if _is_skill_aiming_active:
+		return aim_direction.x < 0.0
+	if absf(input_vector.x) > 0.01:
+		return input_vector.x < 0.0
+	return fallback_facing_left
+
+
+func _lock_skill_facing(direction: Vector2, duration: float) -> void:
+	if direction.length_squared() <= 0.0:
+		return
+	_skill_facing_lock_left = direction.x < 0.0
+	_skill_facing_lock_time = maxf(duration, _attack_animation_seconds())
+	_facing_left = _skill_facing_lock_left
+
+
+func _attack_animation_seconds() -> float:
+	return float(FRAME_COUNT) / ATTACK_FPS
 
 
 func _read_mouse_aim_direction() -> Vector2:
@@ -827,6 +1017,9 @@ func _die() -> void:
 	_attack_time = 0.0
 	_cast_time = 0.0
 	_stun_time = 0.0
+	_fast_boi_time = 0.0
+	_fast_boi_duration = 0.0
+	_fast_boi_speed_multiplier = 1.0
 	_set_cast_progress_visible(false)
 	_set_spell_cast_floor_visible(false)
 	if multiplayer.multiplayer_peer != null:
@@ -882,11 +1075,11 @@ func _build_death_overlay() -> void:
 	_death_overlay = PanelContainer.new()
 	_death_overlay.visible = false
 	_death_overlay.mouse_filter = Control.MOUSE_FILTER_STOP
-	_death_overlay.set_anchors_preset(Control.PRESET_CENTER_BOTTOM)
-	_death_overlay.offset_left = -150.0
-	_death_overlay.offset_top = -360.0
-	_death_overlay.offset_right = 150.0
-	_death_overlay.offset_bottom = -252.0
+	_death_overlay.set_anchors_preset(Control.PRESET_CENTER_TOP)
+	_death_overlay.offset_left = -130.0
+	_death_overlay.offset_top = 72.0
+	_death_overlay.offset_right = 130.0
+	_death_overlay.offset_bottom = 164.0
 	root.add_child(_death_overlay)
 
 	var panel_style := StyleBoxFlat.new()
@@ -917,7 +1110,7 @@ func _build_death_overlay() -> void:
 	_death_message.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	_death_message.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
 	_death_message.add_theme_color_override("font_color", Color(1.0, 0.84, 0.55))
-	_death_message.add_theme_font_size_override("font_size", 18)
+	_death_message.add_theme_font_size_override("font_size", 16)
 	layout.add_child(_death_message)
 
 	_revive_button = Button.new()

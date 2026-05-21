@@ -33,10 +33,10 @@ border_width_top = 1
 border_width_right = 1
 border_width_bottom = 1
 border_color = Color(0.72, 0.92, 1, 1)
-corner_radius_top_left = 11
-corner_radius_top_right = 11
-corner_radius_bottom_right = 11
-corner_radius_bottom_left = 11
+corner_radius_top_left = 10
+corner_radius_top_right = 10
+corner_radius_bottom_right = 10
+corner_radius_bottom_left = 10
 
 [sub_resource type="StyleBoxFlat" id="StyleBoxFlat_art"]
 bg_color = Color(0.2, 0.05, 0.05, 1)
@@ -63,7 +63,7 @@ corner_radius_bottom_right = 4
 corner_radius_bottom_left = 4
 
 [node name="SkillCardView" type="PanelContainer" unique_id=726807174]
-custom_minimum_size = Vector2(112, 154)
+custom_minimum_size = Vector2(124, 174)
 theme_override_styles/panel = SubResource("StyleBoxFlat_card")
 script = ExtResource("1_script")
 
@@ -78,10 +78,10 @@ theme_override_constants/margin_bottom = 6
 [node name="Layout" type="VBoxContainer" parent="Margin" unique_id=1745318629]
 layout_mode = 2
 mouse_filter = 2
-theme_override_constants/separation = 4
+theme_override_constants/separation = 5
 
 [node name="Header" type="PanelContainer" parent="Margin/Layout" unique_id=1620987489]
-custom_minimum_size = Vector2(0, 26)
+custom_minimum_size = Vector2(0, 40)
 layout_mode = 2
 mouse_filter = 2
 theme_override_styles/panel = SubResource("StyleBoxFlat_header")
@@ -90,41 +90,22 @@ theme_override_styles/panel = SubResource("StyleBoxFlat_header")
 layout_mode = 2
 mouse_filter = 2
 theme_override_constants/margin_left = 4
-theme_override_constants/margin_top = 3
+theme_override_constants/margin_top = 4
 theme_override_constants/margin_right = 4
-theme_override_constants/margin_bottom = 3
+theme_override_constants/margin_bottom = 4
 
-[node name="HeaderRow" type="HBoxContainer" parent="Margin/Layout/Header/HeaderMargin" unique_id=29055643]
-layout_mode = 2
-mouse_filter = 2
-theme_override_constants/separation = 4
-
-[node name="CostBadge" type="PanelContainer" parent="Margin/Layout/Header/HeaderMargin/HeaderRow" unique_id=1759512933]
-custom_minimum_size = Vector2(20, 20)
-layout_mode = 2
-mouse_filter = 2
-theme_override_styles/panel = SubResource("StyleBoxFlat_cost")
-
-[node name="CostLabel" type="Label" parent="Margin/Layout/Header/HeaderMargin/HeaderRow/CostBadge" unique_id=1578784586]
+[node name="TitleLabel" type="Label" parent="Margin/Layout/Header/HeaderMargin" unique_id=626043134]
 unique_name_in_owner = true
-custom_minimum_size = Vector2(20, 20)
+custom_minimum_size = Vector2(0, 30)
 layout_mode = 2
-theme_override_colors/font_color = Color(0.82, 0.96, 1, 1)
-theme_override_font_sizes/font_size = 13
-text = "1"
+theme_override_colors/font_color = Color(1, 0.88, 0.55, 1)
+theme_override_font_sizes/font_size = 12
+text = "test teststset"
 horizontal_alignment = 1
 vertical_alignment = 1
-
-[node name="TitleLabel" type="Label" parent="Margin/Layout/Header/HeaderMargin/HeaderRow" unique_id=626043134]
-unique_name_in_owner = true
-custom_minimum_size = Vector2(0, 18)
-layout_mode = 2
-size_flags_horizontal = 3
-theme_override_colors/font_color = Color(1, 0.88, 0.55, 1)
-theme_override_font_sizes/font_size = 13
-text = "test teststset"
-vertical_alignment = 1
 clip_text = true
+autowrap_mode = 2
+max_lines_visible = 2
 text_overrun_behavior = 3
 
 [node name="ArtFrame" type="PanelContainer" parent="Margin/Layout" unique_id=81864723]
@@ -151,7 +132,7 @@ color = Color(0.32, 0.08, 0.08, 1)
 
 [node name="DescriptionFrame" type="PanelContainer" parent="Margin/Layout" unique_id=1312725931]
 clip_contents = true
-custom_minimum_size = Vector2(0, 40)
+custom_minimum_size = Vector2(0, 58)
 layout_mode = 2
 mouse_filter = 2
 theme_override_styles/panel = SubResource("StyleBoxFlat_description")
@@ -166,14 +147,36 @@ theme_override_constants/margin_bottom = 3
 
 [node name="DescriptionLabel" type="Label" parent="Margin/Layout/DescriptionFrame/DescriptionMargin" unique_id=2078679501]
 unique_name_in_owner = true
-custom_minimum_size = Vector2(0, 34)
+custom_minimum_size = Vector2(0, 52)
 layout_mode = 2
 size_flags_vertical = 3
 theme_override_colors/font_color = Color(0.12, 0.07, 0.03, 1)
-theme_override_font_sizes/font_size = 10
+theme_override_font_sizes/font_size = 11
 text = "testsdfserwserwerwerwe"
 horizontal_alignment = 1
 vertical_alignment = 1
 autowrap_mode = 2
 clip_text = true
-max_lines_visible = 3
+max_lines_visible = 4
+
+[node name="CostBadgeRoot" type="Node2D" parent="."]
+position = Vector2(14, 14)
+z_index = 2
+
+[node name="CostBadge" type="PanelContainer" parent="CostBadgeRoot"]
+custom_minimum_size = Vector2(20, 20)
+offset_left = -10.0
+offset_top = -10.0
+offset_right = 10.0
+offset_bottom = 10.0
+mouse_filter = 2
+theme_override_styles/panel = SubResource("StyleBoxFlat_cost")
+
+[node name="CostLabel" type="Label" parent="CostBadgeRoot/CostBadge"]
+custom_minimum_size = Vector2(20, 20)
+layout_mode = 2
+theme_override_colors/font_color = Color(0.82, 0.96, 1, 1)
+theme_override_font_sizes/font_size = 12
+text = "1"
+horizontal_alignment = 1
+vertical_alignment = 1

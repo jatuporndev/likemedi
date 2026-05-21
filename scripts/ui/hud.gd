@@ -3,6 +3,7 @@ extends CanvasLayer
 const SKILL_CARD_DATABASE := preload("res://scripts/game/skill_card_database.gd")
 const SKILL_DECK := preload("res://scripts/game/skill_deck.gd")
 const SKILL_STAMINA := preload("res://scripts/game/skill_stamina.gd")
+const PLAYER_TARGET_PREVIEW := preload("res://scripts/ui/player_target_preview.gd")
 const SKILL_CARD_SCENE := preload("res://scenes/ui/skill_card_view.tscn")
 
 var _chat_log: RichTextLabel
@@ -10,14 +11,21 @@ var _chat_input: LineEdit
 var _host_label: Label
 var _player_name_label: Label
 var _fps_label: Label
+var _health_value_label: Label
+var _health_bar: ProgressBar
 var _stamina_value_label: Label
 var _stamina_bar: ProgressBar
 var _draw_deck_label: Label
 var _discard_deck_label: Label
-var _end_hand_button: Button
+var _end_hand_button: Control
+var _buff_status_panel: PanelContainer
+var _buff_status_icon: Label
+var _buff_status_tooltip: PanelContainer
+var _buff_status_tooltip_label: Label
 var _pause_overlay: Control
 var _dragged_skill_card: PanelContainer
 var _release_hint: Label
+var _card_status_label: Label
 var _drag_line: Line2D
 var _drag_arrow_head: Polygon2D
 var _skill_preview_rects: Array[Polygon2D] = []
@@ -25,13 +33,7 @@ var _skill_preview_border: Line2D
 var _skill_preview_centerline: Line2D
 var _skill_preview_rune_marks: Array[Line2D] = []
 var _skill_preview_label: Label
-var _heal_cursor_ring: Line2D
-var _heal_target_floor_root: Node2D
-var _heal_target_fill: Polygon2D
-var _heal_target_ring: Line2D
-var _heal_target_inner_ring: Line2D
-var _heal_target_rune_ring: Line2D
-var _heal_target_marks: Array[Line2D] = []
+var _player_target_preview
 var _room_code := ""
 var _is_dragging_skill_card := false
 var _dragged_skill := ""
@@ -39,22 +41,27 @@ var _skill_deck := SKILL_DECK.new()
 var _skill_stamina := SKILL_STAMINA.new()
 var _hand_cards: Array[PanelContainer] = []
 
-const CARD_SIZE := Vector2(112.0, 154.0)
-const CARD_SCREEN_SCALE := 0.78
-const CARD_BOTTOM_MARGIN := 14.0
-const CARD_HAND_STEP := 58.0
-const CARD_HAND_RISE := 5.0
-const CARD_HOVER_LIFT := 14.0
+const CARD_SIZE := Vector2(124.0, 174.0)
+const CARD_SCREEN_SCALE := 0.76
+const CARD_BOTTOM_MARGIN := 12.0
+const CARD_SIDE_MARGIN := 40.0
+const CARD_HAND_STEP := 64.0
+const CARD_HAND_RISE := 6.0
+const CARD_HOVER_LIFT := 16.0
 const CARD_HOVER_SCALE := 0.86
 const CARD_AIM_HAND_DIP := 76.0
 const CARD_AIM_SELECTED_DIP := 22.0
 const CARD_AIM_HAND_SPREAD_SCALE := 0.86
-const CARD_AIM_HAND_SCALE := 0.72
+const CARD_AIM_HAND_SCALE := 0.69
 const CARD_LAYOUT_TWEEN_SECONDS := 0.16
 const DECK_SHUFFLE_SECONDS := 2.0
 const DRAW_AFTER_SHUFFLE_DELAY := DECK_SHUFFLE_SECONDS * 0.5
 const HAND_REFILL_START_DELAY := 0.25
 const CARD_DRAW_DELAY := 0.18
+const END_HAND_STAMINA_COST := 1
+const END_HAND_BUTTON_HOVER_SCALE := Vector2(1.07, 1.07)
+const END_HAND_BUTTON_PRESSED_SCALE := Vector2(0.94, 0.94)
+const END_HAND_BUTTON_ANIMATION_SECONDS := 0.10
 const SKILL_PREVIEW_WIDTH := 44.0
 const SKILL_PREVIEW_START_OFFSET := Vector2(0.0, 36.0)
 const SKILL_PREVIEW_FORWARD_OFFSET := 30.0
@@ -71,18 +78,14 @@ const SKILL_PREVIEW_INVALID_GLYPH := Color(0.72, 0.66, 0.56, 0.34)
 const STRIKE_SKILL_NAME := "strike"
 const STRIKE_PREVIEW_SEGMENTS := 28
 const STRIKE_PREVIEW_FORWARD_OFFSET := 28.0
-const HEAL_CURSOR_RADIUS := 34.0
-const HEAL_CURSOR_SEGMENTS := 40
-const HEAL_TARGET_FLOOR_OFFSET := Vector2(0.0, 46.0)
-const HEAL_TARGET_FLOOR_RADIUS := 34.0
-const HEAL_TARGET_FLOOR_Y_SCALE := 0.52
-const HEAL_TARGET_FLOOR_SEGMENTS := 48
-const HEAL_TARGET_MARK_COUNT := 12
 const PLAYER_TARGET_BODY_RECT := Vector2(76.0, 116.0)
+const FAST_BOI_BUFF_WARNING_SECONDS := 10.0
+const BUFF_STATUS_TOOLTIP_OFFSET := Vector2(14.0, 14.0)
 
 var _hovered_skill_card: PanelContainer
 var _is_dealing_hand := false
 var _hovered_heal_target_peer_id := -1
+var _is_hovering_buff_status := false
 
 
 func _ready() -> void:
@@ -91,8 +94,9 @@ func _ready() -> void:
 
 
 func _process(delta: float) -> void:
-	if _player_name_label != null:
-		_player_name_label.text = _get_local_player_name()
+	_update_player_status_ui()
+	_update_buff_status_ui()
+	_update_end_hand_button()
 	if _fps_label != null:
 		_fps_label.text = "FPS %d" % Engine.get_frames_per_second()
 	var stamina_changed := _skill_stamina.recharge(delta)
@@ -134,59 +138,30 @@ func _input(event: InputEvent) -> void:
 
 
 func _build_ui() -> void:
-	var top_bar := PanelContainer.new()
-	top_bar.anchor_right = 1.0
-	top_bar.offset_left = 12
-	top_bar.offset_top = 12
-	top_bar.offset_right = -12
-	top_bar.offset_bottom = 48
-	add_child(top_bar)
-
-	var top_margin := MarginContainer.new()
-	top_margin.add_theme_constant_override("margin_left", 9)
-	top_margin.add_theme_constant_override("margin_right", 9)
-	top_margin.add_theme_constant_override("margin_top", 6)
-	top_margin.add_theme_constant_override("margin_bottom", 6)
-	top_bar.add_child(top_margin)
-
-	var top_layout := HBoxContainer.new()
-	top_margin.add_child(top_layout)
-
-	_player_name_label = Label.new()
-	_player_name_label.custom_minimum_size = Vector2(124, 0)
-	_player_name_label.text = _get_local_player_name()
-	top_layout.add_child(_player_name_label)
-
-	_host_label = Label.new()
-	_host_label.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	if NetworkManager.is_host():
 		_room_code = NetworkManager.get_host_info()
-		_host_label.text = "Room %s (%s)" % [
-			_room_code,
-			NetworkManager.get_transport_mode().to_upper(),
-		]
-	else:
-		_host_label.text = "Connected to host (%s)" % NetworkManager.get_transport_mode().to_upper()
-	top_layout.add_child(_host_label)
 
 	_fps_label = Label.new()
-	_fps_label.custom_minimum_size = Vector2(60, 0)
+	_fps_label.anchor_left = 1.0
+	_fps_label.anchor_top = 0.0
+	_fps_label.anchor_right = 1.0
+	_fps_label.anchor_bottom = 0.0
+	_fps_label.offset_left = -78.0
+	_fps_label.offset_top = 12.0
+	_fps_label.offset_right = -12.0
+	_fps_label.offset_bottom = 30.0
 	_fps_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
 	_fps_label.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
 	_fps_label.text = "FPS 0"
 	_fps_label.add_theme_color_override("font_color", Color(0.75, 0.96, 0.72))
-	top_layout.add_child(_fps_label)
+	_fps_label.add_theme_color_override("font_shadow_color", Color(0.02, 0.015, 0.01, 0.9))
+	_fps_label.add_theme_constant_override("shadow_offset_x", 1)
+	_fps_label.add_theme_constant_override("shadow_offset_y", 1)
+	_fps_label.add_theme_font_size_override("font_size", 10)
+	add_child(_fps_label)
 
-	if NetworkManager.is_host():
-		var copy_button := Button.new()
-		copy_button.text = "Copy Code"
-		copy_button.pressed.connect(_copy_room_code)
-		top_layout.add_child(copy_button)
-
-	var leave_button := Button.new()
-	leave_button.text = "Leave"
-	leave_button.pressed.connect(Callable(NetworkManager, "leave_game"))
-	top_layout.add_child(leave_button)
+	_build_player_status_card()
+	_build_buff_status_ui()
 
 	var chat_panel := PanelContainer.new()
 	chat_panel.anchor_left = 0.0
@@ -197,6 +172,7 @@ func _build_ui() -> void:
 	chat_panel.offset_top = -142
 	chat_panel.offset_right = 224
 	chat_panel.offset_bottom = -12
+	chat_panel.add_theme_stylebox_override("panel", _create_chat_panel_style())
 	add_child(chat_panel)
 
 	var chat_margin := MarginContainer.new()
@@ -214,12 +190,19 @@ func _build_ui() -> void:
 	_chat_log.custom_minimum_size = Vector2(0, 76)
 	_chat_log.fit_content = false
 	_chat_log.scroll_following = true
+	_chat_log.add_theme_stylebox_override("normal", _create_chat_log_style())
+	_chat_log.add_theme_color_override("default_color", Color(0.94, 0.88, 0.74))
 	_chat_log.add_theme_font_size_override("normal_font_size", 10)
 	_chat_log.add_theme_font_size_override("bold_font_size", 10)
 	chat_layout.add_child(_chat_log)
 
 	_chat_input = LineEdit.new()
 	_chat_input.placeholder_text = "Chat"
+	_chat_input.add_theme_stylebox_override("normal", _create_chat_input_style(false))
+	_chat_input.add_theme_stylebox_override("focus", _create_chat_input_style(true))
+	_chat_input.add_theme_color_override("font_color", Color(0.96, 0.90, 0.76))
+	_chat_input.add_theme_color_override("font_placeholder_color", Color(0.62, 0.52, 0.38))
+	_chat_input.add_theme_color_override("caret_color", Color(1.0, 0.82, 0.42))
 	_chat_input.add_theme_font_size_override("font_size", 10)
 	_chat_input.text_submitted.connect(_submit_chat)
 	chat_layout.add_child(_chat_input)
@@ -241,11 +224,367 @@ func _on_chat_message(sender_id: int, message: String) -> void:
 
 
 func _copy_room_code() -> void:
+	if _room_code.is_empty():
+		_room_code = NetworkManager.get_host_info()
+
 	DisplayServer.clipboard_set(_room_code)
-	_host_label.text = "Room %s copied (%s)" % [
-		_room_code,
-		NetworkManager.get_transport_mode().to_upper(),
-	]
+	if _host_label != null:
+		_host_label.text = "Room %s copied" % _room_code
+
+
+func _create_chat_panel_style() -> StyleBoxFlat:
+	var panel_style := StyleBoxFlat.new()
+	panel_style.bg_color = Color(0.07, 0.055, 0.04, 0.92)
+	panel_style.border_color = Color(0.68, 0.44, 0.18, 0.95)
+	panel_style.border_width_left = 2
+	panel_style.border_width_top = 2
+	panel_style.border_width_right = 2
+	panel_style.border_width_bottom = 2
+	panel_style.corner_radius_top_left = 7
+	panel_style.corner_radius_top_right = 7
+	panel_style.corner_radius_bottom_left = 7
+	panel_style.corner_radius_bottom_right = 7
+	return panel_style
+
+
+func _create_chat_log_style() -> StyleBoxFlat:
+	var log_style := StyleBoxFlat.new()
+	log_style.bg_color = Color(0.035, 0.028, 0.022, 0.70)
+	log_style.border_color = Color(0.32, 0.22, 0.12, 0.82)
+	log_style.border_width_left = 1
+	log_style.border_width_top = 1
+	log_style.border_width_right = 1
+	log_style.border_width_bottom = 1
+	log_style.corner_radius_top_left = 4
+	log_style.corner_radius_top_right = 4
+	log_style.corner_radius_bottom_left = 4
+	log_style.corner_radius_bottom_right = 4
+	log_style.content_margin_left = 5
+	log_style.content_margin_right = 5
+	log_style.content_margin_top = 4
+	log_style.content_margin_bottom = 4
+	return log_style
+
+
+func _create_chat_input_style(is_focused: bool) -> StyleBoxFlat:
+	var input_style := StyleBoxFlat.new()
+	input_style.bg_color = Color(0.10, 0.075, 0.055, 0.98)
+	input_style.border_color = Color(0.90, 0.67, 0.30, 0.95) if is_focused else Color(0.54, 0.36, 0.16, 0.95)
+	input_style.border_width_left = 1
+	input_style.border_width_top = 1
+	input_style.border_width_right = 1
+	input_style.border_width_bottom = 1
+	input_style.corner_radius_top_left = 4
+	input_style.corner_radius_top_right = 4
+	input_style.corner_radius_bottom_left = 4
+	input_style.corner_radius_bottom_right = 4
+	input_style.content_margin_left = 6
+	input_style.content_margin_right = 6
+	input_style.content_margin_top = 3
+	input_style.content_margin_bottom = 3
+	return input_style
+
+
+func _build_player_status_card() -> void:
+	var status_panel := PanelContainer.new()
+	status_panel.anchor_left = 0.0
+	status_panel.anchor_top = 0.0
+	status_panel.anchor_right = 0.0
+	status_panel.anchor_bottom = 0.0
+	status_panel.offset_left = 12.0
+	status_panel.offset_top = 12.0
+	status_panel.offset_right = 230.0
+	status_panel.offset_bottom = 104.0
+	status_panel.add_theme_stylebox_override("panel", _create_status_panel_style())
+	add_child(status_panel)
+
+	var status_margin := MarginContainer.new()
+	status_margin.add_theme_constant_override("margin_left", 12)
+	status_margin.add_theme_constant_override("margin_right", 12)
+	status_margin.add_theme_constant_override("margin_top", 10)
+	status_margin.add_theme_constant_override("margin_bottom", 10)
+	status_panel.add_child(status_margin)
+
+	var status_layout := VBoxContainer.new()
+	status_layout.add_theme_constant_override("separation", 7)
+	status_margin.add_child(status_layout)
+
+	_player_name_label = Label.new()
+	_player_name_label.text = _get_local_player_name()
+	_player_name_label.clip_text = true
+	_player_name_label.text_overrun_behavior = TextServer.OVERRUN_TRIM_ELLIPSIS
+	_player_name_label.add_theme_font_size_override("font_size", 15)
+	_player_name_label.add_theme_color_override("font_color", Color.WHITE)
+	status_layout.add_child(_player_name_label)
+
+	var health_row := HBoxContainer.new()
+	health_row.add_theme_constant_override("separation", 7)
+	status_layout.add_child(health_row)
+
+	var health_label := Label.new()
+	health_label.custom_minimum_size = Vector2(28.0, 0.0)
+	health_label.text = "HP"
+	health_label.add_theme_font_size_override("font_size", 11)
+	health_label.add_theme_color_override("font_color", Color.WHITE)
+	health_row.add_child(health_label)
+
+	_health_bar = _create_status_progress_bar(
+		Color(0.12, 0.04, 0.035, 1.0),
+		Color(0.74, 0.16, 0.10, 1.0),
+		10.0
+	)
+	_health_bar.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	health_row.add_child(_health_bar)
+
+	_health_value_label = Label.new()
+	_health_value_label.custom_minimum_size = Vector2(46.0, 0.0)
+	_health_value_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
+	_health_value_label.add_theme_font_size_override("font_size", 11)
+	_health_value_label.add_theme_color_override("font_color", Color.WHITE)
+	health_row.add_child(_health_value_label)
+
+	var stamina_row := HBoxContainer.new()
+	stamina_row.add_theme_constant_override("separation", 7)
+	status_layout.add_child(stamina_row)
+
+	var stamina_label := Label.new()
+	stamina_label.custom_minimum_size = Vector2(28.0, 0.0)
+	stamina_label.text = "SP"
+	stamina_label.add_theme_font_size_override("font_size", 11)
+	stamina_label.add_theme_color_override("font_color", Color.WHITE)
+	stamina_row.add_child(stamina_label)
+
+	_stamina_bar = _create_status_progress_bar(
+		Color(0.05, 0.10, 0.13, 1.0),
+		Color(0.21, 0.66, 0.86, 1.0),
+		10.0
+	)
+	_stamina_bar.max_value = SKILL_STAMINA.MAX_STAMINA
+	_stamina_bar.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	stamina_row.add_child(_stamina_bar)
+
+	_stamina_value_label = Label.new()
+	_stamina_value_label.custom_minimum_size = Vector2(46.0, 0.0)
+	_stamina_value_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
+	_stamina_value_label.add_theme_font_size_override("font_size", 11)
+	_stamina_value_label.add_theme_color_override("font_color", Color.WHITE)
+	stamina_row.add_child(_stamina_value_label)
+
+	_update_player_status_ui()
+	_update_stamina_ui()
+
+
+func _create_status_panel_style() -> StyleBoxFlat:
+	var panel_style := StyleBoxFlat.new()
+	panel_style.bg_color = Color(0.07, 0.055, 0.04, 0.96)
+	panel_style.border_color = Color(0.68, 0.44, 0.18, 0.95)
+	panel_style.border_width_left = 2
+	panel_style.border_width_top = 2
+	panel_style.border_width_right = 2
+	panel_style.border_width_bottom = 2
+	panel_style.corner_radius_top_left = 7
+	panel_style.corner_radius_top_right = 7
+	panel_style.corner_radius_bottom_left = 7
+	panel_style.corner_radius_bottom_right = 7
+	return panel_style
+
+
+func _create_status_progress_bar(background_color: Color, fill_color: Color, height: float) -> ProgressBar:
+	var bar := ProgressBar.new()
+	bar.custom_minimum_size = Vector2(0.0, height)
+	bar.show_percentage = false
+	var background_style := StyleBoxFlat.new()
+	background_style.bg_color = background_color
+	background_style.corner_radius_top_left = 2
+	background_style.corner_radius_top_right = 2
+	background_style.corner_radius_bottom_left = 2
+	background_style.corner_radius_bottom_right = 2
+	bar.add_theme_stylebox_override("background", background_style)
+
+	var fill_style := StyleBoxFlat.new()
+	fill_style.bg_color = fill_color
+	fill_style.corner_radius_top_left = 2
+	fill_style.corner_radius_top_right = 2
+	fill_style.corner_radius_bottom_left = 2
+	fill_style.corner_radius_bottom_right = 2
+	bar.add_theme_stylebox_override("fill", fill_style)
+	return bar
+
+
+func _update_player_status_ui() -> void:
+	if _player_name_label != null:
+		_player_name_label.text = _get_local_player_name()
+	if _health_bar == null or _health_value_label == null:
+		return
+
+	var player := _get_local_player_node()
+	var max_health := 100
+	var current_health := max_health
+	if player != null:
+		var health_value = player.get("_health")
+		var max_health_value = player.get("_max_health")
+		if health_value is int or health_value is float:
+			current_health = int(health_value)
+		if max_health_value is int or max_health_value is float:
+			max_health = maxi(int(max_health_value), 1)
+
+	_health_bar.max_value = float(max_health)
+	_health_bar.value = clampf(float(current_health), 0.0, float(max_health))
+	_health_value_label.text = "%d/%d" % [current_health, max_health]
+
+
+func _build_buff_status_ui() -> void:
+	_buff_status_panel = PanelContainer.new()
+	_buff_status_panel.visible = false
+	_buff_status_panel.anchor_left = 1.0
+	_buff_status_panel.anchor_top = 0.5
+	_buff_status_panel.anchor_right = 1.0
+	_buff_status_panel.anchor_bottom = 0.5
+	_buff_status_panel.offset_left = -48.0
+	_buff_status_panel.offset_top = -16.0
+	_buff_status_panel.offset_right = -16.0
+	_buff_status_panel.offset_bottom = 16.0
+	_buff_status_panel.mouse_filter = Control.MOUSE_FILTER_STOP
+	_buff_status_panel.z_index = 55
+	_buff_status_panel.add_theme_stylebox_override("panel", _create_buff_status_panel_style())
+	_buff_status_panel.mouse_entered.connect(_on_buff_status_mouse_entered)
+	_buff_status_panel.mouse_exited.connect(_on_buff_status_mouse_exited)
+	add_child(_buff_status_panel)
+
+	var margin := MarginContainer.new()
+	margin.add_theme_constant_override("margin_left", 4)
+	margin.add_theme_constant_override("margin_right", 4)
+	margin.add_theme_constant_override("margin_top", 3)
+	margin.add_theme_constant_override("margin_bottom", 3)
+	_buff_status_panel.add_child(margin)
+
+	_buff_status_icon = Label.new()
+	_buff_status_icon.text = ">>"
+	_buff_status_icon.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	_buff_status_icon.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+	_buff_status_icon.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	_buff_status_icon.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	_buff_status_icon.add_theme_font_size_override("font_size", 13)
+	_buff_status_icon.add_theme_color_override("font_color", Color(0.66, 0.92, 1.0))
+	margin.add_child(_buff_status_icon)
+
+	_buff_status_tooltip = PanelContainer.new()
+	_buff_status_tooltip.visible = false
+	_buff_status_tooltip.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_buff_status_tooltip.z_index = 70
+	_buff_status_tooltip.add_theme_stylebox_override("panel", _create_buff_status_tooltip_style())
+	add_child(_buff_status_tooltip)
+
+	var tooltip_margin := MarginContainer.new()
+	tooltip_margin.add_theme_constant_override("margin_left", 6)
+	tooltip_margin.add_theme_constant_override("margin_right", 6)
+	tooltip_margin.add_theme_constant_override("margin_top", 3)
+	tooltip_margin.add_theme_constant_override("margin_bottom", 3)
+	_buff_status_tooltip.add_child(tooltip_margin)
+
+	_buff_status_tooltip_label = Label.new()
+	_buff_status_tooltip_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	_buff_status_tooltip_label.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+	_buff_status_tooltip_label.add_theme_font_size_override("font_size", 10)
+	_buff_status_tooltip_label.add_theme_color_override("font_color", Color(0.88, 0.98, 1.0))
+	tooltip_margin.add_child(_buff_status_tooltip_label)
+
+
+func _create_buff_status_panel_style() -> StyleBoxFlat:
+	var panel_style := StyleBoxFlat.new()
+	panel_style.bg_color = Color(0.035, 0.11, 0.16, 0.92)
+	panel_style.border_color = Color(0.30, 0.74, 0.92, 0.86)
+	panel_style.border_width_left = 1
+	panel_style.border_width_top = 1
+	panel_style.border_width_right = 1
+	panel_style.border_width_bottom = 1
+	panel_style.corner_radius_top_left = 5
+	panel_style.corner_radius_top_right = 5
+	panel_style.corner_radius_bottom_left = 5
+	panel_style.corner_radius_bottom_right = 5
+	return panel_style
+
+
+func _create_buff_status_tooltip_style() -> StyleBoxFlat:
+	var panel_style := StyleBoxFlat.new()
+	panel_style.bg_color = Color(0.025, 0.055, 0.07, 0.94)
+	panel_style.border_color = Color(0.30, 0.74, 0.92, 0.76)
+	panel_style.border_width_left = 1
+	panel_style.border_width_top = 1
+	panel_style.border_width_right = 1
+	panel_style.border_width_bottom = 1
+	panel_style.corner_radius_top_left = 4
+	panel_style.corner_radius_top_right = 4
+	panel_style.corner_radius_bottom_left = 4
+	panel_style.corner_radius_bottom_right = 4
+	return panel_style
+
+
+func _update_buff_status_ui() -> void:
+	if _buff_status_panel == null:
+		return
+
+	var remaining_time := _get_fast_boi_remaining_time()
+	var is_active := remaining_time > 0.0
+	_buff_status_panel.visible = is_active
+	if not is_active:
+		_is_hovering_buff_status = false
+		if _buff_status_tooltip != null:
+			_buff_status_tooltip.visible = false
+		return
+
+	_update_buff_status_tooltip(remaining_time)
+	var panel_alpha := 1.0
+	if remaining_time < FAST_BOI_BUFF_WARNING_SECONDS:
+		panel_alpha = 0.28 if int(Time.get_ticks_msec() / 250) % 2 == 0 else 1.0
+	_buff_status_panel.modulate = Color(1.0, 1.0, 1.0, panel_alpha)
+	_buff_status_icon.modulate = Color.WHITE
+
+
+func _update_buff_status_tooltip(remaining_time: float) -> void:
+	if _buff_status_tooltip == null or _buff_status_tooltip_label == null:
+		return
+
+	_buff_status_tooltip.visible = _is_hovering_buff_status
+	if not _is_hovering_buff_status:
+		return
+
+	_buff_status_tooltip_label.text = _format_buff_time(remaining_time)
+	_buff_status_tooltip.reset_size()
+	var tooltip_size := _buff_status_tooltip.size
+	var viewport_size := get_viewport().get_visible_rect().size
+	var target_position := get_viewport().get_mouse_position() + BUFF_STATUS_TOOLTIP_OFFSET
+	target_position.x = minf(target_position.x, viewport_size.x - tooltip_size.x - 4.0)
+	target_position.y = minf(target_position.y, viewport_size.y - tooltip_size.y - 4.0)
+	target_position.x = maxf(target_position.x, 4.0)
+	target_position.y = maxf(target_position.y, 4.0)
+	_buff_status_tooltip.position = target_position
+
+
+func _get_fast_boi_remaining_time() -> float:
+	var player := _get_local_player_node()
+	if player == null:
+		return 0.0
+
+	var remaining_time = player.get("_fast_boi_time")
+	if remaining_time is int or remaining_time is float:
+		return maxf(float(remaining_time), 0.0)
+	return 0.0
+
+
+func _format_buff_time(seconds: float) -> String:
+	var whole_seconds := ceili(maxf(seconds, 0.0))
+	var minutes := int(whole_seconds / 60)
+	var remaining_seconds := whole_seconds % 60
+	return "%d:%02d" % [minutes, remaining_seconds]
+
+
+func _on_buff_status_mouse_entered() -> void:
+	_is_hovering_buff_status = true
+
+
+func _on_buff_status_mouse_exited() -> void:
+	_is_hovering_buff_status = false
 
 
 func _build_pause_menu() -> void:
@@ -269,9 +608,9 @@ func _build_pause_menu() -> void:
 	panel.anchor_right = 0.5
 	panel.anchor_bottom = 0.5
 	panel.offset_left = -110.0
-	panel.offset_top = -104.0
+	panel.offset_top = -124.0
 	panel.offset_right = 110.0
-	panel.offset_bottom = 104.0
+	panel.offset_bottom = 124.0
 	panel.mouse_filter = Control.MOUSE_FILTER_STOP
 	panel.add_theme_stylebox_override("panel", _create_pause_panel_style())
 	_pause_overlay.add_child(panel)
@@ -293,6 +632,24 @@ func _build_pause_menu() -> void:
 	title.add_theme_color_override("font_color", Color(1.0, 0.86, 0.52))
 	title.add_theme_font_size_override("font_size", 20)
 	layout.add_child(title)
+
+	_host_label = Label.new()
+	_host_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	_host_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	_host_label.add_theme_color_override("font_color", Color(0.92, 0.80, 0.58))
+	_host_label.add_theme_font_size_override("font_size", 10)
+	if NetworkManager.is_host():
+		if _room_code.is_empty():
+			_room_code = NetworkManager.get_host_info()
+		_host_label.text = "Room %s" % _room_code
+	else:
+		_host_label.text = "Connected"
+	layout.add_child(_host_label)
+
+	if NetworkManager.is_host():
+		var copy_button := _create_pause_button("Copy Code")
+		copy_button.pressed.connect(_copy_room_code)
+		layout.add_child(copy_button)
 
 	var resume_button := _create_pause_button("Resume")
 	resume_button.pressed.connect(_hide_pause_menu)
@@ -394,141 +751,240 @@ func _build_deck_ui() -> void:
 	deck_panel.anchor_top = 1.0
 	deck_panel.anchor_right = 1.0
 	deck_panel.anchor_bottom = 1.0
-	deck_panel.offset_left = -258
-	deck_panel.offset_top = -96
-	deck_panel.offset_right = -12
+	deck_panel.offset_left = -244
+	deck_panel.offset_top = -76
+	deck_panel.offset_right = -16
 	deck_panel.offset_bottom = -12
+	deck_panel.add_theme_stylebox_override("panel", _create_deck_panel_style())
 	add_child(deck_panel)
 
 	var deck_margin := MarginContainer.new()
-	deck_margin.add_theme_constant_override("margin_left", 7)
-	deck_margin.add_theme_constant_override("margin_right", 7)
-	deck_margin.add_theme_constant_override("margin_top", 7)
-	deck_margin.add_theme_constant_override("margin_bottom", 7)
+	deck_margin.add_theme_constant_override("margin_left", 8)
+	deck_margin.add_theme_constant_override("margin_right", 8)
+	deck_margin.add_theme_constant_override("margin_top", 8)
+	deck_margin.add_theme_constant_override("margin_bottom", 8)
 	deck_panel.add_child(deck_margin)
 
-	var deck_layout := VBoxContainer.new()
-	deck_layout.add_theme_constant_override("separation", 5)
+	var deck_layout := HBoxContainer.new()
+	deck_layout.add_theme_constant_override("separation", 6)
 	deck_margin.add_child(deck_layout)
 
-	var stacks := HBoxContainer.new()
-	stacks.add_theme_constant_override("separation", 7)
-	deck_layout.add_child(stacks)
-
-	var stamina_panel := _create_stamina_panel()
-	stacks.add_child(stamina_panel)
-
-	_draw_deck_label = _create_deck_stack_label("Draw Pile", 0)
-	stacks.add_child(_draw_deck_label)
-
-	_discard_deck_label = _create_deck_stack_label("Discard", 0)
-	stacks.add_child(_discard_deck_label)
-
-	_end_hand_button = Button.new()
-	_end_hand_button.text = "End Hand"
-	_end_hand_button.custom_minimum_size = Vector2(0.0, 22.0)
-	_end_hand_button.add_theme_font_size_override("font_size", 10)
-	_end_hand_button.focus_mode = Control.FOCUS_NONE
-	_end_hand_button.pressed.connect(_on_end_hand_pressed)
+	_end_hand_button = _create_end_hand_button()
 	deck_layout.add_child(_end_hand_button)
 
+	var stacks := HBoxContainer.new()
+	stacks.add_theme_constant_override("separation", 5)
+	deck_layout.add_child(stacks)
 
-func _create_deck_stack_label(title: String, count: int) -> Label:
-	var label := Label.new()
-	label.custom_minimum_size = Vector2(70.0, 40.0)
-	label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	label.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
-	label.text = "%s\n%d" % [title, count]
-	label.add_theme_font_size_override("font_size", 10)
-	label.add_theme_color_override("font_color", Color(0.95, 0.86, 0.62))
-	var stack_style := StyleBoxFlat.new()
-	stack_style.bg_color = Color(0.12, 0.09, 0.07, 0.96)
-	stack_style.border_color = Color(0.74, 0.50, 0.22)
-	stack_style.border_width_left = 2
-	stack_style.border_width_top = 2
-	stack_style.border_width_right = 2
-	stack_style.border_width_bottom = 2
-	stack_style.corner_radius_top_left = 6
-	stack_style.corner_radius_top_right = 6
-	stack_style.corner_radius_bottom_left = 6
-	stack_style.corner_radius_bottom_right = 6
-	label.add_theme_stylebox_override("normal", stack_style)
-	return label
+	_draw_deck_label = _create_deck_stack_label("Draw Pile", 0, false)
+	stacks.add_child(_draw_deck_label)
+
+	_discard_deck_label = _create_deck_stack_label("Discard", 0, true)
+	stacks.add_child(_discard_deck_label)
+
+	_update_end_hand_button()
 
 
-func _create_stamina_panel() -> PanelContainer:
-	var panel := PanelContainer.new()
-	panel.custom_minimum_size = Vector2(88.0, 40.0)
+func _create_deck_panel_style() -> StyleBoxFlat:
 	var panel_style := StyleBoxFlat.new()
-	panel_style.bg_color = Color(0.09, 0.11, 0.14, 0.96)
-	panel_style.border_color = Color(0.36, 0.74, 0.92)
+	panel_style.bg_color = Color(0.08, 0.065, 0.05, 0.96)
+	panel_style.border_color = Color(0.58, 0.38, 0.16, 0.95)
 	panel_style.border_width_left = 2
 	panel_style.border_width_top = 2
 	panel_style.border_width_right = 2
 	panel_style.border_width_bottom = 2
-	panel_style.corner_radius_top_left = 6
-	panel_style.corner_radius_top_right = 6
-	panel_style.corner_radius_bottom_left = 6
-	panel_style.corner_radius_bottom_right = 6
-	panel.add_theme_stylebox_override("panel", panel_style)
+	panel_style.corner_radius_top_left = 7
+	panel_style.corner_radius_top_right = 7
+	panel_style.corner_radius_bottom_left = 7
+	panel_style.corner_radius_bottom_right = 7
+	return panel_style
 
-	var margin := MarginContainer.new()
-	margin.add_theme_constant_override("margin_left", 5)
-	margin.add_theme_constant_override("margin_right", 5)
-	margin.add_theme_constant_override("margin_top", 3)
-	margin.add_theme_constant_override("margin_bottom", 3)
-	panel.add_child(margin)
 
-	var layout := VBoxContainer.new()
-	layout.add_theme_constant_override("separation", 3)
-	margin.add_child(layout)
+func _create_end_hand_button() -> Control:
+	var button := Control.new()
+	button.custom_minimum_size = Vector2(78.0, 42.0)
+	button.mouse_filter = Control.MOUSE_FILTER_STOP
+	button.pivot_offset = button.custom_minimum_size * 0.5
+	button.set_meta("disabled", false)
+	button.set_meta("hovered", false)
+	button.set_meta("pressed", false)
 
-	var header := HBoxContainer.new()
-	layout.add_child(header)
-
-	var title := Label.new()
-	title.text = "Stamina"
-	title.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	title.add_theme_font_size_override("font_size", 9)
-	title.add_theme_color_override("font_color", Color(0.78, 0.94, 1.0))
-	header.add_child(title)
-
-	_stamina_value_label = Label.new()
-	_stamina_value_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
-	_stamina_value_label.add_theme_font_size_override("font_size", 9)
-	_stamina_value_label.add_theme_color_override("font_color", Color(0.78, 0.94, 1.0))
-	header.add_child(_stamina_value_label)
-
-	_stamina_bar = _create_stamina_progress_bar(
-		Color(0.07, 0.10, 0.13, 1.0),
-		Color(0.21, 0.66, 0.86, 1.0),
-		5.0
+	var background := PanelContainer.new()
+	background.anchor_right = 1.0
+	background.anchor_bottom = 1.0
+	background.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	background.add_theme_stylebox_override(
+		"panel",
+		_create_end_hand_button_style(Color(0.56, 0.19, 0.08), Color(1.0, 0.70, 0.25))
 	)
-	_stamina_bar.max_value = SKILL_STAMINA.MAX_STAMINA
-	layout.add_child(_stamina_bar)
-	return panel
+	button.set_meta("background_panel", background)
+	button.add_child(background)
+
+	button.gui_input.connect(_on_end_hand_gui_input.bind(button))
+	button.mouse_entered.connect(_set_end_hand_button_hovered.bind(button, true))
+	button.mouse_exited.connect(_set_end_hand_button_hovered.bind(button, false))
+
+	var cost_badge := PanelContainer.new()
+	cost_badge.anchor_left = 0.0
+	cost_badge.anchor_top = 0.0
+	cost_badge.anchor_right = 0.0
+	cost_badge.anchor_bottom = 0.0
+	cost_badge.offset_left = 4.0
+	cost_badge.offset_top = 4.0
+	cost_badge.offset_right = 24.0
+	cost_badge.offset_bottom = 24.0
+	cost_badge.custom_minimum_size = Vector2(20.0, 20.0)
+	cost_badge.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	cost_badge.add_theme_stylebox_override("panel", _create_end_hand_cost_badge_style())
+	button.add_child(cost_badge)
+
+	var cost_label := Label.new()
+	cost_label.custom_minimum_size = Vector2(20.0, 20.0)
+	cost_label.text = str(END_HAND_STAMINA_COST)
+	cost_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	cost_label.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+	cost_label.add_theme_color_override("font_color", Color(0.82, 0.96, 1.0))
+	cost_label.add_theme_font_size_override("font_size", 12)
+	cost_badge.add_child(cost_label)
+
+	var text_label := Label.new()
+	text_label.anchor_right = 1.0
+	text_label.anchor_bottom = 1.0
+	text_label.offset_left = 19.0
+	text_label.offset_right = -5.0
+	text_label.text = "End\nHand"
+	text_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	text_label.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+	text_label.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	text_label.add_theme_color_override("font_color", Color(1.0, 0.90, 0.62))
+	text_label.add_theme_font_size_override("font_size", 10)
+	button.add_child(text_label)
+	return button
 
 
-func _create_stamina_progress_bar(background_color: Color, fill_color: Color, height: float) -> ProgressBar:
-	var bar := ProgressBar.new()
-	bar.custom_minimum_size = Vector2(0.0, height)
-	bar.show_percentage = false
-	var background_style := StyleBoxFlat.new()
-	background_style.bg_color = background_color
-	background_style.corner_radius_top_left = 2
-	background_style.corner_radius_top_right = 2
-	background_style.corner_radius_bottom_left = 2
-	background_style.corner_radius_bottom_right = 2
-	bar.add_theme_stylebox_override("background", background_style)
+func _create_end_hand_button_style(bg_color: Color, border_color: Color) -> StyleBoxFlat:
+	var button_style := StyleBoxFlat.new()
+	button_style.bg_color = bg_color
+	button_style.border_color = border_color
+	button_style.border_width_left = 2
+	button_style.border_width_top = 2
+	button_style.border_width_right = 2
+	button_style.border_width_bottom = 2
+	button_style.corner_radius_top_left = 7
+	button_style.corner_radius_top_right = 7
+	button_style.corner_radius_bottom_left = 7
+	button_style.corner_radius_bottom_right = 7
+	button_style.content_margin_left = 6
+	button_style.content_margin_right = 6
+	button_style.content_margin_top = 6
+	button_style.content_margin_bottom = 6
+	return button_style
 
-	var fill_style := StyleBoxFlat.new()
-	fill_style.bg_color = fill_color
-	fill_style.corner_radius_top_left = 2
-	fill_style.corner_radius_top_right = 2
-	fill_style.corner_radius_bottom_left = 2
-	fill_style.corner_radius_bottom_right = 2
-	bar.add_theme_stylebox_override("fill", fill_style)
-	return bar
+
+func _create_end_hand_cost_badge_style() -> StyleBoxFlat:
+	var badge_style := StyleBoxFlat.new()
+	badge_style.bg_color = Color(0.16, 0.35, 0.42, 1.0)
+	badge_style.border_color = Color(0.72, 0.92, 1.0, 1.0)
+	badge_style.border_width_left = 1
+	badge_style.border_width_top = 1
+	badge_style.border_width_right = 1
+	badge_style.border_width_bottom = 1
+	badge_style.corner_radius_top_left = 10
+	badge_style.corner_radius_top_right = 10
+	badge_style.corner_radius_bottom_left = 10
+	badge_style.corner_radius_bottom_right = 10
+	return badge_style
+
+
+func _on_end_hand_gui_input(event: InputEvent, button: Control) -> void:
+	if button == null or bool(button.get_meta("disabled", false)) or _is_local_player_dead():
+		return
+	if event is InputEventMouseButton and event.button_index == MOUSE_BUTTON_LEFT:
+		if event.pressed:
+			_set_end_hand_button_pressed(button, true)
+		else:
+			_set_end_hand_button_pressed(button, false)
+			_on_end_hand_pressed()
+
+
+func _set_end_hand_button_hovered(button: Control, is_hovered: bool) -> void:
+	if button == null or bool(button.get_meta("disabled", false)):
+		return
+	button.set_meta("hovered", is_hovered)
+	if not is_hovered:
+		button.set_meta("pressed", false)
+	_set_end_hand_button_style(button, is_hovered, bool(button.get_meta("pressed", false)))
+	_animate_end_hand_button(button)
+
+
+func _set_end_hand_button_pressed(button: Control, is_pressed: bool) -> void:
+	if button == null or bool(button.get_meta("disabled", false)):
+		return
+	button.set_meta("pressed", is_pressed)
+	_set_end_hand_button_style(button, bool(button.get_meta("hovered", false)), is_pressed)
+	_animate_end_hand_button(button)
+
+
+func _set_end_hand_button_style(button: Control, is_hovered: bool, is_pressed: bool) -> void:
+	var bg_color := Color(0.56, 0.19, 0.08)
+	var border_color := Color(1.0, 0.70, 0.25)
+	if is_pressed:
+		bg_color = Color(0.42, 0.13, 0.06)
+		border_color = Color(0.95, 0.56, 0.20)
+	elif is_hovered:
+		bg_color = Color(0.70, 0.25, 0.10)
+		border_color = Color(1.0, 0.82, 0.42)
+	var background = button.get_meta("background_panel") if button.has_meta("background_panel") else null
+	if background is PanelContainer:
+		background.add_theme_stylebox_override("panel", _create_end_hand_button_style(bg_color, border_color))
+
+
+func _animate_end_hand_button(button: Control) -> void:
+	var previous_tween = button.get_meta("animation_tween") if button.has_meta("animation_tween") else null
+	if previous_tween is Tween:
+		previous_tween.kill()
+
+	var target_scale := Vector2.ONE
+	if bool(button.get_meta("pressed", false)):
+		target_scale = END_HAND_BUTTON_PRESSED_SCALE
+	elif bool(button.get_meta("hovered", false)):
+		target_scale = END_HAND_BUTTON_HOVER_SCALE
+
+	var tween := create_tween()
+	tween.set_parallel(true)
+	tween.set_trans(Tween.TRANS_BACK)
+	tween.set_ease(Tween.EASE_OUT)
+	tween.tween_property(button, "scale", target_scale, END_HAND_BUTTON_ANIMATION_SECONDS)
+	button.set_meta("animation_tween", tween)
+
+
+func _create_deck_stack_label(title: String, count: int, is_discard: bool) -> Label:
+	var label := Label.new()
+	label.custom_minimum_size = Vector2(56.0, 28.0)
+	label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	label.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+	label.text = "%s\n%d" % [title, count]
+	label.add_theme_font_size_override("font_size", 8)
+	label.add_theme_color_override(
+		"font_color",
+		Color(0.95, 0.86, 0.62) if not is_discard else Color(0.72, 0.76, 0.82)
+	)
+	var stack_style := StyleBoxFlat.new()
+	stack_style.bg_color = Color(0.16, 0.11, 0.06, 0.98) if not is_discard else Color(0.09, 0.10, 0.12, 0.98)
+	stack_style.border_color = Color(0.86, 0.56, 0.20) if not is_discard else Color(0.44, 0.50, 0.58)
+	stack_style.border_width_left = 2
+	stack_style.border_width_top = 2
+	stack_style.border_width_right = 2
+	stack_style.border_width_bottom = 2
+	stack_style.corner_radius_top_left = 4
+	stack_style.corner_radius_top_right = 4
+	stack_style.corner_radius_bottom_left = 4
+	stack_style.corner_radius_bottom_right = 4
+	stack_style.shadow_color = Color(0.02, 0.015, 0.01, 0.55)
+	stack_style.shadow_size = 2
+	stack_style.shadow_offset = Vector2(2.0, 2.0)
+	label.add_theme_stylebox_override("normal", stack_style)
+	return label
 
 
 func _update_stamina_ui() -> void:
@@ -542,6 +998,7 @@ func _update_stamina_ui() -> void:
 	var stamina_bar_value := _get_stamina_bar_value()
 	_stamina_bar.value = stamina_bar_value
 	_update_local_player_stamina_bar(stamina_bar_value)
+	_update_end_hand_button()
 
 
 func _get_stamina_bar_value() -> float:
@@ -596,54 +1053,8 @@ func _build_skill_card_ui() -> void:
 	_skill_preview_label.add_theme_font_size_override("font_size", 14)
 	add_child(_skill_preview_label)
 
-	_heal_cursor_ring = Line2D.new()
-	_heal_cursor_ring.visible = false
-	_heal_cursor_ring.z_index = 30
-	_heal_cursor_ring.width = 2.0
-	_heal_cursor_ring.default_color = Color(0.58, 0.96, 0.68, 0.58)
-	add_child(_heal_cursor_ring)
-
-	_heal_target_floor_root = Node2D.new()
-	_heal_target_floor_root.z_index = 0
-	_heal_target_floor_root.y_sort_enabled = false
-	var heal_target_parent := _get_heal_target_floor_parent()
-	if heal_target_parent != null:
-		heal_target_parent.add_child(_heal_target_floor_root)
-		heal_target_parent.move_child(_heal_target_floor_root, 0)
-	else:
-		add_child(_heal_target_floor_root)
-
-	_heal_target_fill = Polygon2D.new()
-	_heal_target_fill.visible = false
-	_heal_target_fill.color = Color(0.12, 0.94, 0.42, 0.20)
-	_heal_target_floor_root.add_child(_heal_target_fill)
-
-	_heal_target_ring = Line2D.new()
-	_heal_target_ring.visible = false
-	_heal_target_ring.width = 3.0
-	_heal_target_ring.default_color = Color(0.52, 1.0, 0.66, 0.92)
-	_heal_target_floor_root.add_child(_heal_target_ring)
-
-	_heal_target_inner_ring = Line2D.new()
-	_heal_target_inner_ring.visible = false
-	_heal_target_inner_ring.width = 1.5
-	_heal_target_inner_ring.default_color = Color(0.76, 1.0, 0.80, 0.62)
-	_heal_target_floor_root.add_child(_heal_target_inner_ring)
-
-	_heal_target_rune_ring = Line2D.new()
-	_heal_target_rune_ring.visible = false
-	_heal_target_rune_ring.width = 1.0
-	_heal_target_rune_ring.default_color = Color(0.40, 1.0, 0.62, 0.56)
-	_heal_target_floor_root.add_child(_heal_target_rune_ring)
-
-	_heal_target_marks.clear()
-	for _index in range(HEAL_TARGET_MARK_COUNT):
-		var mark := Line2D.new()
-		mark.visible = false
-		mark.width = 2.0
-		mark.default_color = Color(0.84, 1.0, 0.82, 0.72)
-		_heal_target_marks.append(mark)
-		_heal_target_floor_root.add_child(mark)
+	_player_target_preview = PLAYER_TARGET_PREVIEW.new()
+	_player_target_preview.setup(self, _get_player_target_floor_parent())
 
 	_drag_line = Line2D.new()
 	_drag_line.visible = false
@@ -672,6 +1083,26 @@ func _build_skill_card_ui() -> void:
 	_release_hint.visible = false
 	_release_hint.add_theme_color_override("font_color", Color(0.95, 0.85, 0.56))
 	add_child(_release_hint)
+
+	_card_status_label = Label.new()
+	_card_status_label.anchor_left = 0.5
+	_card_status_label.anchor_top = 1.0
+	_card_status_label.anchor_right = 0.5
+	_card_status_label.anchor_bottom = 1.0
+	_card_status_label.offset_left = -150.0
+	_card_status_label.offset_top = -196.0
+	_card_status_label.offset_right = 150.0
+	_card_status_label.offset_bottom = -172.0
+	_card_status_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	_card_status_label.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+	_card_status_label.visible = false
+	_card_status_label.z_index = 45
+	_card_status_label.add_theme_color_override("font_color", Color(1.0, 0.84, 0.52))
+	_card_status_label.add_theme_color_override("font_shadow_color", Color(0.08, 0.04, 0.02, 0.92))
+	_card_status_label.add_theme_constant_override("shadow_offset_x", 1)
+	_card_status_label.add_theme_constant_override("shadow_offset_y", 1)
+	_card_status_label.add_theme_font_size_override("font_size", 14)
+	add_child(_card_status_label)
 
 	_skill_deck.setup_default_deck()
 	_hand_cards = []
@@ -776,21 +1207,89 @@ func _discard_hand() -> void:
 
 
 func _on_end_hand_pressed() -> void:
+	if _hand_cards.is_empty() or _is_dealing_hand or _is_local_player_dead():
+		return
+
+	if not _skill_stamina.can_spend(END_HAND_STAMINA_COST):
+		if _release_hint != null:
+			_release_hint.text = "Need %d stamina" % END_HAND_STAMINA_COST
+			_release_hint.visible = true
+		return
+
+	if not _skill_stamina.spend(END_HAND_STAMINA_COST):
+		return
+
+	if _release_hint != null:
+		_release_hint.visible = false
+	_update_stamina_ui()
 	_discard_hand()
 
 
 func _update_deck_ui() -> void:
 	if _draw_deck_label != null:
 		if _skill_deck.is_shuffling:
-			_draw_deck_label.text = "Draw Pile\nShuffling"
+			_draw_deck_label.text = "Draw Pile\nMix"
 		elif _skill_deck.is_waiting_to_draw_after_shuffle:
-			_draw_deck_label.text = "Draw Pile\nMoving"
+			_draw_deck_label.text = "Draw Pile\n..."
 		else:
-			_draw_deck_label.text = "Draw Pile\n%d cards" % _skill_deck.draw_pile_count()
+			_draw_deck_label.text = "Draw Pile\n%d" % _skill_deck.draw_pile_count()
 	if _discard_deck_label != null:
-		_discard_deck_label.text = "Discard\n%d cards" % _skill_deck.discard_pile_count()
-	if _end_hand_button != null:
-		_end_hand_button.disabled = _hand_cards.is_empty() or _is_dealing_hand
+		_discard_deck_label.text = "Discard\n%d" % _skill_deck.discard_pile_count()
+	_update_end_hand_button()
+	_update_card_status_ui()
+
+
+func _update_end_hand_button() -> void:
+	if _end_hand_button == null:
+		return
+
+	var is_disabled := (
+		_hand_cards.is_empty()
+		or _is_dealing_hand
+		or _is_local_player_dead()
+		or not _skill_stamina.can_spend(END_HAND_STAMINA_COST)
+	)
+	var was_disabled := bool(_end_hand_button.get_meta("disabled", false))
+	_end_hand_button.set_meta("disabled", is_disabled)
+	var background = (
+		_end_hand_button.get_meta("background_panel")
+		if _end_hand_button.has_meta("background_panel")
+		else null
+	)
+	if is_disabled:
+		if background is PanelContainer:
+			background.add_theme_stylebox_override(
+				"panel",
+				_create_end_hand_button_style(Color(0.16, 0.13, 0.11), Color(0.42, 0.36, 0.28))
+			)
+	else:
+		_set_end_hand_button_style(
+			_end_hand_button,
+			bool(_end_hand_button.get_meta("hovered", false)),
+			bool(_end_hand_button.get_meta("pressed", false))
+		)
+	if is_disabled and not was_disabled:
+		_end_hand_button.set_meta("hovered", false)
+		_end_hand_button.set_meta("pressed", false)
+		_animate_end_hand_button(_end_hand_button)
+
+
+func _update_card_status_ui() -> void:
+	if _card_status_label == null:
+		return
+
+	var status_text := ""
+	if _skill_deck.is_shuffling:
+		status_text = "Shuffling deck..."
+	elif _skill_deck.is_waiting_to_draw_after_shuffle:
+		status_text = "Preparing cards..."
+	elif _is_dealing_hand:
+		status_text = "Drawing cards..."
+	elif _skill_deck.draw_pile_count() == 0:
+		status_text = "Deck empty"
+
+	_card_status_label.text = status_text
+	_card_status_label.visible = not status_text.is_empty()
 
 
 func _create_skill_card(
@@ -848,7 +1347,7 @@ func _finish_skill_card_drag(_mouse_position: Vector2) -> void:
 	var was_used := false
 	var stamina_cost := _get_card_stamina_cost(_dragged_skill_card)
 	if _skill_stamina.can_spend(stamina_cost):
-		if _is_heal_card(_dragged_skill_card) and _hovered_heal_target_peer_id < 0:
+		if _requires_player_target_card(_dragged_skill_card) and _hovered_heal_target_peer_id < 0:
 			_release_hint.text = "Select target"
 		else:
 			was_used = _request_local_skill(_dragged_skill, _hovered_heal_target_peer_id)
@@ -863,6 +1362,7 @@ func _finish_skill_card_drag(_mouse_position: Vector2) -> void:
 	_drag_line.visible = false
 	_drag_arrow_head.visible = false
 	_set_skill_preview_visible(false)
+	_set_local_player_skill_aiming(false)
 	var used_card := _dragged_skill_card
 	_dragged_skill_card = null
 	_dragged_skill = ""
@@ -887,6 +1387,7 @@ func _cancel_skill_card_drag() -> void:
 	_drag_line.visible = false
 	_drag_arrow_head.visible = false
 	_set_skill_preview_visible(false)
+	_set_local_player_skill_aiming(false)
 	_reset_skill_card_positions()
 
 
@@ -932,6 +1433,7 @@ func _update_skill_card_drag_at(mouse_position: Vector2) -> void:
 		active_card = _hand_cards[0]
 	if active_card == null:
 		_set_skill_preview_visible(false)
+		_set_local_player_skill_aiming(false)
 		_drag_arrow_head.visible = false
 		return
 	_update_skill_preview(active_card, mouse_position)
@@ -948,15 +1450,19 @@ func _update_skill_preview(card: PanelContainer, mouse_position: Vector2) -> Vec
 	var player := _get_local_player_node()
 	if player == null:
 		_set_skill_preview_visible(false)
+		_set_local_player_skill_aiming(false)
 		return Vector2.INF
 
 	var attack_range := float(card.get_meta("range", 0.0))
-	var heal := int(card.get_meta("heal", 0))
-	if str(card.get_meta("skill_type", "attack")) == "heal":
-		return _update_heal_target_preview(mouse_position, heal)
+	var skill_type := str(card.get_meta("skill_type", "attack"))
+	if _is_player_target_skill_type(skill_type):
+		_set_local_player_skill_aiming(false)
+		return _update_player_target_preview(mouse_position, skill_type)
 	if attack_range <= 0.0:
 		_set_skill_preview_visible(false)
+		_set_local_player_skill_aiming(false)
 		return Vector2.INF
+	_set_local_player_skill_aiming(true)
 
 	if str(card.get_meta("skill_name", "")) == STRIKE_SKILL_NAME:
 		return _update_strike_preview(card, mouse_position, attack_range, player)
@@ -1019,8 +1525,7 @@ func _update_skill_preview(card: PanelContainer, mouse_position: Vector2) -> Vec
 	_update_skillshot_preview_glyphs(preview_start, center, forward, side, glyph_color, pulse)
 	_set_skill_preview_visible(true)
 	_skill_preview_label.visible = false
-	_heal_cursor_ring.visible = false
-	_set_heal_target_floor_visible(false)
+	_hide_player_target_preview()
 	return center
 
 
@@ -1082,8 +1587,7 @@ func _update_strike_preview(
 	_skill_preview_border.visible = true
 	_update_strike_preview_glyphs(center, screen_range, direction, start_angle, end_angle, glyph_color, pulse)
 	_skill_preview_label.visible = false
-	_heal_cursor_ring.visible = false
-	_set_heal_target_floor_visible(false)
+	_hide_player_target_preview()
 	return center + direction * screen_range
 
 
@@ -1193,12 +1697,13 @@ func _set_skill_preview_visible(is_visible: bool) -> void:
 	if _skill_preview_label != null:
 		_skill_preview_label.visible = is_visible
 	if not is_visible:
-		if _heal_cursor_ring != null:
-			_heal_cursor_ring.visible = false
-		_set_heal_target_floor_visible(false)
+		_hide_player_target_preview()
 
 
-func _update_heal_target_preview(mouse_position: Vector2, _heal: int) -> Vector2:
+func _update_player_target_preview(
+	mouse_position: Vector2,
+	skill_type: String
+) -> Vector2:
 	for preview_rect in _skill_preview_rects:
 		preview_rect.visible = false
 	_skill_preview_border.visible = false
@@ -1207,129 +1712,24 @@ func _update_heal_target_preview(mouse_position: Vector2, _heal: int) -> Vector2
 	for mark in _skill_preview_rune_marks:
 		mark.visible = false
 	_skill_preview_label.visible = false
-	_update_ring_points(_heal_cursor_ring, mouse_position, HEAL_CURSOR_RADIUS, HEAL_CURSOR_SEGMENTS)
-	_heal_cursor_ring.visible = true
+	_player_target_preview.update_cursor(mouse_position, skill_type)
 
 	var target := _find_player_at_screen_position(mouse_position)
 	if target == null:
 		_hovered_heal_target_peer_id = -1
-		_set_heal_target_floor_visible(false)
+		_player_target_preview.hide_floor()
 		return mouse_position
 
 	var peer_id = target.get("peer_id")
 	_hovered_heal_target_peer_id = int(peer_id) if peer_id is int or peer_id is float else -1
 	var center := _get_player_floor_target_world_center(target)
-	var pulse := 1.0 + sin(Time.get_ticks_msec() * 0.008) * 0.07
-	_update_heal_target_floor_circle(center, pulse)
+	_player_target_preview.update_floor(center, skill_type)
 	return _get_player_floor_target_center(target)
 
 
-func _update_heal_target_floor_circle(center: Vector2, pulse: float) -> void:
-	var radius := HEAL_TARGET_FLOOR_RADIUS * pulse
-	var radii := Vector2(radius, radius * HEAL_TARGET_FLOOR_Y_SCALE)
-	var spin := float(Time.get_ticks_msec()) * 0.0018
-
-	if _heal_target_fill != null:
-		_heal_target_fill.color = Color(0.04, 0.86, 0.35, 0.18)
-		_heal_target_fill.polygon = _make_ellipse_polygon(
-			center,
-			radii * 0.96,
-			HEAL_TARGET_FLOOR_SEGMENTS
-		)
-
-	_heal_target_ring.default_color = Color(0.52, 1.0, 0.66, 0.78 + 0.14 * pulse)
-	_update_ellipse_ring_points(_heal_target_ring, center, radii, HEAL_TARGET_FLOOR_SEGMENTS)
-	_heal_target_inner_ring.default_color = Color(0.78, 1.0, 0.80, 0.54 + 0.10 * pulse)
-	_update_ellipse_ring_points(
-		_heal_target_inner_ring,
-		center,
-		radii * 0.66,
-		HEAL_TARGET_FLOOR_SEGMENTS
-	)
-	_heal_target_rune_ring.default_color = Color(0.28, 1.0, 0.56, 0.44 + 0.10 * pulse)
-	_update_rotated_ellipse_ring_points(
-		_heal_target_rune_ring,
-		center,
-		radii * 0.82,
-		HEAL_TARGET_FLOOR_SEGMENTS,
-		spin
-	)
-	_update_heal_target_marks(center, radii, spin)
-	_set_heal_target_floor_visible(true)
-
-
-func _set_heal_target_floor_visible(is_visible: bool) -> void:
-	if _heal_target_fill != null:
-		_heal_target_fill.visible = is_visible
-	if _heal_target_ring != null:
-		_heal_target_ring.visible = is_visible
-	if _heal_target_inner_ring != null:
-		_heal_target_inner_ring.visible = is_visible
-	if _heal_target_rune_ring != null:
-		_heal_target_rune_ring.visible = is_visible
-	for mark in _heal_target_marks:
-		mark.visible = is_visible
-
-
-func _update_heal_target_marks(center: Vector2, radii: Vector2, spin: float) -> void:
-	for index in range(_heal_target_marks.size()):
-		var angle := spin + TAU * float(index) / float(_heal_target_marks.size())
-		var direction := Vector2(cos(angle), sin(angle))
-		var inner := center + direction * radii * 0.74
-		var outer := center + direction * radii * 0.98
-		_heal_target_marks[index].points = PackedVector2Array([inner, outer])
-
-
-func _make_ellipse_polygon(center: Vector2, radii: Vector2, segment_count: int) -> PackedVector2Array:
-	var points := PackedVector2Array([center])
-	for i in range(segment_count + 1):
-		var angle := TAU * float(i) / float(segment_count)
-		points.append(center + Vector2(cos(angle) * radii.x, sin(angle) * radii.y))
-	return points
-
-
-func _update_ellipse_ring_points(
-	ring: Line2D,
-	center: Vector2,
-	radii: Vector2,
-	segment_count: int
-) -> void:
-	if ring == null:
-		return
-
-	var points := PackedVector2Array()
-	for i in range(segment_count + 1):
-		var angle := TAU * float(i) / float(segment_count)
-		points.append(center + Vector2(cos(angle) * radii.x, sin(angle) * radii.y))
-	ring.points = points
-
-
-func _update_ring_points(ring: Line2D, center: Vector2, radius: float, segment_count: int) -> void:
-	if ring == null:
-		return
-
-	var points := PackedVector2Array()
-	for i in range(segment_count + 1):
-		var angle := TAU * float(i) / float(segment_count)
-		points.append(center + Vector2.RIGHT.rotated(angle) * radius)
-	ring.points = points
-
-
-func _update_rotated_ellipse_ring_points(
-	ring: Line2D,
-	center: Vector2,
-	radii: Vector2,
-	segment_count: int,
-	rotation: float
-) -> void:
-	if ring == null:
-		return
-
-	var points := PackedVector2Array()
-	for i in range(segment_count + 1):
-		var angle := rotation + TAU * float(i) / float(segment_count)
-		points.append(center + Vector2(cos(angle) * radii.x, sin(angle) * radii.y))
-	ring.points = points
+func _hide_player_target_preview() -> void:
+	if _player_target_preview != null:
+		_player_target_preview.hide_all()
 
 
 func _update_drag_arrow_head(start_position: Vector2, end_position: Vector2) -> void:
@@ -1352,15 +1752,16 @@ func _update_drag_arrow_head(start_position: Vector2, end_position: Vector2) -> 
 
 func _reset_skill_card_positions() -> void:
 	var hand_count := _hand_cards.size()
+	var hand_step := _get_skill_card_hand_step(hand_count)
 	for index in range(hand_count):
 		var card := _hand_cards[index]
 
 		var card_index := float(index)
 		var hand_center := (float(hand_count) - 1.0) * 0.5
-		var center_offset: float = (card_index - hand_center) * CARD_HAND_STEP
+		var center_offset: float = (card_index - hand_center) * hand_step
 		var distance_from_center: float = absf(card_index - hand_center)
 		var rise: float = -CARD_HAND_RISE * (1.0 - minf(distance_from_center, 1.0))
-		var rotation: float = clampf(center_offset / CARD_HAND_STEP, -2.0, 2.0) * 4.0
+		var rotation: float = clampf(card_index - hand_center, -2.0, 2.0) * 4.0
 		if _is_dragging_skill_card:
 			if card == _dragged_skill_card:
 				rise += CARD_AIM_SELECTED_DIP
@@ -1371,6 +1772,17 @@ func _reset_skill_card_positions() -> void:
 				rotation *= 0.55
 		var z_order := 60 if card == _dragged_skill_card else 40 + index
 		_reset_skill_card_position(card, center_offset, rise, rotation, z_order)
+
+
+func _get_skill_card_hand_step(hand_count: int) -> float:
+	if hand_count <= 1:
+		return 0.0
+
+	var viewport_width := get_viewport().get_visible_rect().size.x
+	var outer_card_index_offset := (float(hand_count) - 1.0) * 0.5
+	var card_half_width := CARD_SIZE.x * 0.5
+	var max_center_offset := maxf(viewport_width * 0.5 - card_half_width - CARD_SIDE_MARGIN, 0.0)
+	return minf(CARD_HAND_STEP, max_center_offset / outer_card_index_offset)
 
 
 func _reset_skill_card_position(
@@ -1400,7 +1812,14 @@ func _reset_skill_card_position(
 	card.pivot_offset = CARD_SIZE * 0.5
 	card.z_index = z_order
 	var scaled_visual_height := CARD_SIZE.y * 0.5 * (1.0 + target_scale.y)
-	var target_position := Vector2(offset_x, -scaled_visual_height - CARD_BOTTOM_MARGIN + offset_y)
+	var viewport_width := get_viewport().get_visible_rect().size.x
+	var min_target_x := -viewport_width * 0.5 + CARD_SIDE_MARGIN
+	var max_target_x := viewport_width * 0.5 - CARD_SIZE.x - CARD_SIDE_MARGIN
+	var target_x := clampf(offset_x - CARD_SIZE.x * 0.5, min_target_x, max_target_x)
+	var target_position := Vector2(
+		target_x,
+		-scaled_visual_height - CARD_BOTTOM_MARGIN + offset_y
+	)
 	_animate_skill_card_to(card, target_position, rotation, target_scale)
 
 
@@ -1471,6 +1890,12 @@ func _request_local_skill(skill_name: String, target_peer_id: int = -1) -> bool:
 	return bool(game_manager.request_local_skill(skill_name, target_peer_id))
 
 
+func _set_local_player_skill_aiming(is_active: bool) -> void:
+	var player := _get_local_player_node()
+	if player != null and player.has_method("set_skill_aiming_active"):
+		player.call("set_skill_aiming_active", is_active)
+
+
 func _find_player_at_screen_position(screen_position: Vector2) -> Node2D:
 	var world := get_parent()
 	if world == null:
@@ -1484,7 +1909,7 @@ func _find_player_at_screen_position(screen_position: Vector2) -> Node2D:
 	var best_distance_squared := INF
 	for node in players.get_children():
 		var player := node as Node2D
-		if player == null or player == _heal_target_floor_root:
+		if player == null or player == _get_player_target_floor_root():
 			continue
 		var health = player.get("_health")
 		if (health is int or health is float) and int(health) <= 0:
@@ -1492,8 +1917,8 @@ func _find_player_at_screen_position(screen_position: Vector2) -> Node2D:
 
 		var center := _get_player_floor_target_center(player)
 		var ellipse_delta := screen_position - center
-		var ellipse_radius_x := HEAL_TARGET_FLOOR_RADIUS
-		var ellipse_radius_y := HEAL_TARGET_FLOOR_RADIUS * HEAL_TARGET_FLOOR_Y_SCALE
+		var ellipse_radius_x := PLAYER_TARGET_PREVIEW.FLOOR_RADIUS
+		var ellipse_radius_y := PLAYER_TARGET_PREVIEW.FLOOR_RADIUS * PLAYER_TARGET_PREVIEW.FLOOR_Y_SCALE
 		var ellipse_distance_squared := (
 			(ellipse_delta.x * ellipse_delta.x) / (ellipse_radius_x * ellipse_radius_x)
 			+ (ellipse_delta.y * ellipse_delta.y) / (ellipse_radius_y * ellipse_radius_y)
@@ -1513,19 +1938,26 @@ func _find_player_at_screen_position(screen_position: Vector2) -> Node2D:
 
 
 func _get_player_floor_target_center(player: Node2D) -> Vector2:
-	return player.get_global_transform_with_canvas() * HEAL_TARGET_FLOOR_OFFSET
+	return player.get_global_transform_with_canvas() * PLAYER_TARGET_PREVIEW.FLOOR_OFFSET
 
 
 func _get_player_floor_target_world_center(player: Node2D) -> Vector2:
-	return player.global_position + HEAL_TARGET_FLOOR_OFFSET
+	return player.global_position + PLAYER_TARGET_PREVIEW.FLOOR_OFFSET
 
 
-func _get_heal_target_floor_parent() -> Node:
+func _get_player_target_floor_parent() -> Node:
 	var world := get_parent()
 	if world == null:
 		return null
 
 	return world.get_node_or_null("Players")
+
+
+func _get_player_target_floor_root() -> Node2D:
+	if _player_target_preview == null:
+		return null
+
+	return _player_target_preview.get_floor_root()
 
 
 func _get_skillshot_screen_targets() -> Array[Vector2]:
@@ -1539,7 +1971,7 @@ func _get_skillshot_screen_targets() -> Array[Vector2]:
 	if players != null:
 		for node in players.get_children():
 			var player := node as Node2D
-			if player == null or player == local_player or player == _heal_target_floor_root:
+			if player == null or player == local_player or player == _get_player_target_floor_root():
 				continue
 			if not player.is_in_group("damageable"):
 				continue
@@ -1580,6 +2012,19 @@ func _get_local_player_node() -> Node2D:
 	return players.get_node_or_null(str(multiplayer.get_unique_id())) as Node2D
 
 
+func _is_local_player_dead() -> bool:
+	var player := _get_local_player_node()
+	if player == null:
+		return false
+
+	var is_dead = player.get("_is_dead")
+	if is_dead is bool:
+		return is_dead
+
+	var health = player.get("_health")
+	return (health is int or health is float) and int(health) <= 0
+
+
 func _get_local_player_screen_position() -> Vector2:
 	var player := _get_local_player_node()
 	if player == null:
@@ -1607,8 +2052,12 @@ func _get_card_stamina_cost(card: PanelContainer) -> int:
 	return int(card.get_meta("stamina_cost", 0))
 
 
-func _is_heal_card(card: PanelContainer) -> bool:
+func _requires_player_target_card(card: PanelContainer) -> bool:
 	if card == null:
 		return false
 
-	return str(card.get_meta("skill_type", "attack")) == "heal"
+	return _is_player_target_skill_type(str(card.get_meta("skill_type", "attack")))
+
+
+func _is_player_target_skill_type(skill_type: String) -> bool:
+	return skill_type == "heal" or skill_type == "buff"

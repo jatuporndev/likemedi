@@ -52,6 +52,10 @@ static func _normalize_definition(skill_name: String, raw_definition: Dictionary
 		"damage": int(raw_definition.get("damage", fallback["damage"])),
 		"heal": int(raw_definition.get("heal", fallback["heal"])),
 		"range": float(raw_definition.get("range", fallback["range"])),
+		"buff_speed_percent": float(
+			raw_definition.get("buff_speed_percent", fallback["buff_speed_percent"])
+		),
+		"buff_duration": float(raw_definition.get("buff_duration", fallback["buff_duration"])),
 		"description": str(raw_definition.get("description", fallback["description"])),
 		"bubble_text": str(raw_definition.get("bubble_text", fallback["bubble_text"])),
 		"art_color": _parse_color(raw_definition.get("art_color", fallback["art_color"])),
@@ -82,6 +86,8 @@ static func _fallback_definition(skill_name: String) -> Dictionary:
 			"damage": 35,
 			"heal": 0,
 			"range": 180.0,
+			"buff_speed_percent": 0.0,
+			"buff_duration": 0.0,
 			"description": "Deal 35 damage",
 			"bubble_text": "Fireball!",
 			"art_color": Color(0.82, 0.22, 0.04, 1.0),
@@ -95,9 +101,41 @@ static func _fallback_definition(skill_name: String) -> Dictionary:
 			"damage": 0,
 			"heal": 30,
 			"range": 0.0,
+			"buff_speed_percent": 0.0,
+			"buff_duration": 0.0,
 			"description": "Restore 30 health",
 			"bubble_text": "Heal!",
 			"art_color": Color(0.12, 0.58, 0.30, 1.0),
+		}
+	if skill_name == "swift_raid":
+		return {
+			"title": "Swift Raid",
+			"type": "attack",
+			"cost": 2,
+			"cast_time": 0.0,
+			"damage": 6,
+			"heal": 0,
+			"range": 128.0,
+			"buff_speed_percent": 0.0,
+			"buff_duration": 0.0,
+			"description": "Hit 3 times",
+			"bubble_text": "Swift Raid!",
+			"art_color": Color(0.18, 0.40, 0.66, 1.0),
+		}
+	if skill_name == "fast_boi":
+		return {
+			"title": "Fast Boi",
+			"type": "buff",
+			"cost": 4,
+			"cast_time": 3.0,
+			"damage": 0,
+			"heal": 0,
+			"range": 0.0,
+			"buff_speed_percent": 15.0,
+			"buff_duration": 60.0,
+			"description": "+15% move speed for 1 min",
+			"bubble_text": "Fast Boi!",
+			"art_color": Color(0.10, 0.56, 0.82, 1.0),
 		}
 	return {
 		"title": "Strike",
@@ -107,6 +145,8 @@ static func _fallback_definition(skill_name: String) -> Dictionary:
 		"damage": 5,
 		"heal": 0,
 		"range": 72.0,
+		"buff_speed_percent": 0.0,
+		"buff_duration": 0.0,
 		"description": "Deal 5 damage",
 		"bubble_text": "Strike!",
 		"art_color": Color(0.32, 0.08, 0.08, 1.0),
