@@ -1,0 +1,5 @@
+{
+	"project_id": "your-firebase-project-id",
+	"api_key": "your-web-api-key",
+	"collection": "worlds"
+}

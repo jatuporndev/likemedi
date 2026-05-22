@@ -2,6 +2,7 @@
 .godot/
 /android/
 config/eos.local.json
+config/firebase.local.json
 eosg*.zip
 _eosg_extract/
 /docs/
