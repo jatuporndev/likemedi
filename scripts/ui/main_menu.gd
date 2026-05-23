@@ -21,6 +21,7 @@ var _world_visibility_label: Label
 var _world_visibility_hint: Label
 var _status_label: Label
 var _world_list: VBoxContainer
+var _player_name_label: Label
 var _intro_layer: Control
 var _menu_background: Control
 var _menu_panel: PanelContainer
@@ -31,6 +32,9 @@ var _menu_visible := false
 func _ready() -> void:
 	NetworkManager.connection_failed.connect(_show_error)
 	NetworkManager.world_registry_failed.connect(_show_error)
+	NetworkManager.firebase_auth_changed.connect(_on_firebase_auth_changed)
+	NetworkManager.firebase_auth_failed.connect(_show_error)
+	_apply_firebase_player_name()
 	_build_intro()
 
 
@@ -174,11 +178,23 @@ func _build_main_menu() -> void:
 	subtitle.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	menu_column.add_child(subtitle)
 
-	_name_edit = LineEdit.new()
-	_name_edit.placeholder_text = "Character name"
-	_name_edit.text = _player_name
-	_style_line_edit(_name_edit)
-	menu_column.add_child(_name_edit)
+	var player_row := HBoxContainer.new()
+	player_row.add_theme_constant_override("separation", 8)
+	menu_column.add_child(player_row)
+
+	_player_name_label = _create_label("Playing as %s" % _player_name, 14, COLOR_TEXT)
+	_player_name_label.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	_player_name_label.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+	_player_name_label.clip_text = true
+	_player_name_label.text_overrun_behavior = TextServer.OVERRUN_TRIM_ELLIPSIS
+	player_row.add_child(_player_name_label)
+
+	var rename_button := Button.new()
+	rename_button.text = "Rename"
+	rename_button.custom_minimum_size = Vector2(92, 34)
+	rename_button.pressed.connect(_build_rename_player_menu)
+	_style_button(rename_button)
+	player_row.add_child(rename_button)
 
 	var start_button := Button.new()
 	start_button.text = "Solo Expedition"
@@ -205,6 +221,54 @@ func _build_main_menu() -> void:
 	quit_button.pressed.connect(NetworkManager.quit_game)
 	_style_button(quit_button)
 	menu_column.add_child(quit_button)
+
+	_status_label = _create_status_label()
+	layout.add_child(_status_label)
+
+	_play_menu_intro_animation()
+
+
+func _build_rename_player_menu() -> void:
+	_clear_menu_panel()
+
+	var panel := _create_center_panel(Vector2(430, 330), Vector2(-215, -165), Vector2(215, 165))
+	var layout := _create_panel_layout(panel, 14)
+
+	var header := HBoxContainer.new()
+	header.add_theme_constant_override("separation", 8)
+	layout.add_child(header)
+
+	var back_button := Button.new()
+	back_button.text = "Back"
+	back_button.pressed.connect(_build_main_menu)
+	_style_button(back_button)
+	header.add_child(back_button)
+
+	var title := _create_title_label("Rename Player", 26)
+	title.add_theme_color_override("font_color", COLOR_GOLD_BRIGHT)
+	title.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	header.add_child(title)
+
+	var player_id: String = NetworkManager.get_firebase_player_id()
+	var id_text: String = "Player ID: %s" % player_id if not player_id.is_empty() else "Player ID: signing in..."
+	var id_label := _create_label(id_text, 11, COLOR_MUTED_TEXT)
+	id_label.clip_text = true
+	id_label.text_overrun_behavior = TextServer.OVERRUN_TRIM_ELLIPSIS
+	layout.add_child(id_label)
+
+	_name_edit = LineEdit.new()
+	_name_edit.placeholder_text = "Player name"
+	_name_edit.text = _player_name
+	_name_edit.text_submitted.connect(_on_rename_player_submitted)
+	_style_line_edit(_name_edit)
+	layout.add_child(_name_edit)
+
+	var save_button := Button.new()
+	save_button.text = "Save Name"
+	save_button.custom_minimum_size = Vector2(0, 42)
+	save_button.pressed.connect(_on_save_player_name_pressed)
+	_style_button(save_button, true)
+	layout.add_child(save_button)
 
 	_status_label = _create_status_label()
 	layout.add_child(_status_label)
@@ -446,14 +510,19 @@ func _refresh_world_list() -> void:
 	for child in _world_list.get_children():
 		child.queue_free()
 
-	if worlds.is_empty():
+	var visible_worlds: Array[Dictionary] = []
+	for world in worlds:
+		if _get_world_player_count(world) > 0:
+			visible_worlds.append(world)
+
+	if visible_worlds.is_empty():
 		var empty := Label.new()
 		empty.text = "No open realms found."
 		empty.add_theme_color_override("font_color", COLOR_MUTED_TEXT)
 		_world_list.add_child(empty)
 		return
 
-	for world in worlds:
+	for world in visible_worlds:
 		_world_list.add_child(_create_world_row(world))
 
 
@@ -725,10 +794,14 @@ func _get_world_name(world: Dictionary) -> String:
 
 
 func _format_player_count(world: Dictionary) -> String:
-	var player_count: int = maxi(0, int(world.get("player_count", 1)))
+	var player_count: int = _get_world_player_count(world)
 	if player_count == 1:
 		return "1 player"
 	return "%d players" % player_count
+
+
+func _get_world_player_count(world: Dictionary) -> int:
+	return maxi(0, int(world.get("player_count", 1)))
 
 
 func _format_updated_at(world: Dictionary) -> String:
@@ -787,3 +860,39 @@ func _remember_player_name() -> void:
 func _get_player_name() -> String:
 	_remember_player_name()
 	return _player_name
+
+
+func _on_rename_player_submitted(_new_text: String) -> void:
+	await _on_save_player_name_pressed()
+
+
+func _on_save_player_name_pressed() -> void:
+	_remember_player_name()
+	if _status_label != null:
+		_status_label.text = "Saving player name..."
+
+	var saved: bool = await NetworkManager.save_firebase_player_name(_player_name)
+	if not saved:
+		if _status_label != null and _status_label.text == "Saving player name...":
+			_status_label.text = "Could not save player name."
+		return
+
+	if _status_label != null:
+		_status_label.text = "Player name saved."
+	_build_main_menu()
+
+
+func _apply_firebase_player_name() -> void:
+	var saved_name: String = NetworkManager.get_firebase_player_name()
+	if saved_name.is_empty():
+		return
+
+	_player_name = saved_name
+	if is_instance_valid(_name_edit):
+		_name_edit.text = _player_name
+	if is_instance_valid(_player_name_label):
+		_player_name_label.text = "Playing as %s" % _player_name
+
+
+func _on_firebase_auth_changed(_player_name_from_auth: String) -> void:
+	_apply_firebase_player_name()

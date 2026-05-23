@@ -1,0 +1,19 @@
+[remap]
+
+importer="csv_translation"
+type="Translation"
+uid="uid://2281fp2wrokn"
+
+[deps]
+
+files=["res://sprites/player2/lpc_male_animations_2026-05-23T15-30-15/credits/credits.notes.translation", "res://sprites/player2/lpc_male_animations_2026-05-23T15-30-15/credits/credits.authors.translation", "res://sprites/player2/lpc_male_animations_2026-05-23T15-30-15/credits/credits.licenses.translation", "res://sprites/player2/lpc_male_animations_2026-05-23T15-30-15/credits/credits.urls.translation"]
+
+source_file="res://sprites/player2/lpc_male_animations_2026-05-23T15-30-15/credits/credits.csv"
+dest_files=["res://sprites/player2/lpc_male_animations_2026-05-23T15-30-15/credits/credits.notes.translation", "res://sprites/player2/lpc_male_animations_2026-05-23T15-30-15/credits/credits.authors.translation", "res://sprites/player2/lpc_male_animations_2026-05-23T15-30-15/credits/credits.licenses.translation", "res://sprites/player2/lpc_male_animations_2026-05-23T15-30-15/credits/credits.urls.translation"]
+
+[params]
+
+compress=1
+delimiter=0
+unescape_keys=false
+unescape_translations=true

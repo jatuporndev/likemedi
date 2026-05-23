@@ -13,9 +13,17 @@ var _anim_time := 0.0
 var _damage := 0
 var _caster_peer_id := -1
 var _caster_node: Node2D
+var _targets_players_only := false
 
 
-func setup(origin: Vector2, direction: Vector2, damage: int, caster_peer_id: int, caster_node: Node2D = null) -> void:
+func setup(
+	origin: Vector2,
+	direction: Vector2,
+	damage: int,
+	caster_peer_id: int,
+	caster_node: Node2D = null,
+	targets_players_only: bool = false
+) -> void:
 	global_position = origin
 	_direction = direction.normalized()
 	if _direction.length_squared() <= 0.0:
@@ -23,6 +31,7 @@ func setup(origin: Vector2, direction: Vector2, damage: int, caster_peer_id: int
 	_damage = max(damage, 0)
 	_caster_peer_id = caster_peer_id
 	_caster_node = caster_node
+	_targets_players_only = targets_players_only
 	rotation = _direction.angle()
 
 
@@ -60,10 +69,11 @@ func _on_body_entered(body: Node) -> void:
 		return
 	if _caster_peer_id >= 0 and str(body.name) == str(_caster_peer_id):
 		return
+	if _targets_players_only and not str(body.name).is_valid_int():
+		return
 	if not body.has_method("_take_test_damage"):
 		return
 
 	if _damage > 0:
 		body.call("_take_test_damage", _damage, _caster_node)
 	queue_free()
-

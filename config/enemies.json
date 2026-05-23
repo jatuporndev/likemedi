@@ -16,5 +16,29 @@
     "idle_frames": 11,
     "run_frames": 8,
     "attack_frames": 7
+  },
+  "e2": {
+    "texture_dir": "res://sprites/enemis/e2",
+    "speed": 82.0,
+    "attack_range": 46.0,
+    "attack_damage": 8,
+    "attack_cooldown": 1.4,
+    "aggro_range": 360.0,
+    "give_up_range": 520.0,
+    "give_up_seconds": 0.8,
+    "wander_radius": 140.0,
+    "wander_speed": 34.0,
+    "max_health": 45,
+    "idle_fps": 5.0,
+    "run_fps": 10.0,
+    "attack_fps": 12.0,
+    "idle_frames": 8,
+    "run_frames": 8,
+    "attack_frames": 8,
+    "fireball_enabled": true,
+    "fireball_range": 300.0,
+    "fireball_damage": 14,
+    "fireball_cast_time": 1.5,
+    "fireball_cooldown": 4.0
   }
 }

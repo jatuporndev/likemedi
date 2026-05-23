@@ -1,10 +1,11 @@
 [gd_scene format=3 uid="uid://c3vfebgvfkhgl"]
 
 [ext_resource type="Script" uid="uid://bdd0d6y4qc7nf" path="res://scripts/player/player.gd" id="1_player"]
-[ext_resource type="Texture2D" uid="uid://u5kjn5nm22o1" path="res://sprites/player/Idle.png" id="2_idle"]
-[ext_resource type="Texture2D" uid="uid://bkevoepfn5wlq" path="res://sprites/player/Run.png" id="3_run"]
-[ext_resource type="Texture2D" uid="uid://dqpoghhdybhl2" path="res://sprites/player/Attack1.png" id="4_attack"]
-[ext_resource type="Texture2D" uid="uid://c6o3hf7xqcn2m" path="res://sprites/player/Hurt.png" id="5_hurt"]
+[ext_resource type="Texture2D" path="res://sprites/player2/lpc_male_animations_2026-05-23T15-30-15/games/idle.png" id="2_idle"]
+[ext_resource type="Texture2D" path="res://sprites/player2/lpc_male_animations_2026-05-23T15-30-15/games/walk.png" id="3_run"]
+[ext_resource type="Texture2D" path="res://sprites/player2/lpc_male_animations_2026-05-23T15-30-15/games/halfslash_128.png" id="4_attack"]
+[ext_resource type="Texture2D" path="res://sprites/player2/lpc_male_animations_2026-05-23T15-30-15/games/hurt.png" id="5_hurt"]
+[ext_resource type="Texture2D" path="res://sprites/player2/lpc_male_animations_2026-05-23T15-30-15/games/spellcast.png" id="6_cast"]
 
 [sub_resource type="CircleShape2D" id="CircleShape2D_player_feet"]
 radius = 16.0
@@ -14,12 +15,34 @@ script = ExtResource("1_player")
 idle_texture = ExtResource("2_idle")
 run_texture = ExtResource("3_run")
 attack_texture = ExtResource("4_attack")
+cast_texture = ExtResource("6_cast")
 hurt_texture = ExtResource("5_hurt")
+idle_frame_count = 2
+run_frame_count = 9
+attack_frame_count = 6
+cast_frame_count = 7
+hurt_frame_count = 6
+idle_hframes = 13
+run_hframes = 13
+attack_hframes = 6
+cast_hframes = 13
+hurt_hframes = 13
+idle_vframes = 4
+run_vframes = 4
+attack_vframes = 4
+cast_vframes = 4
+use_direction_rows = true
+direction_row_up = 0
+direction_row_left = 1
+direction_row_down = 2
+direction_row_right = 3
+dead_frame_index = 5
 
 [node name="Sprite2D" type="Sprite2D" parent="." unique_id=1638438518]
 texture_filter = 1
 texture = ExtResource("2_idle")
-hframes = 8
+hframes = 13
+vframes = 4
 
 [node name="CollisionShape2D" type="CollisionShape2D" parent="." unique_id=1933279599]
 position = Vector2(-2, 34)

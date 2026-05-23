@@ -10,7 +10,29 @@ const FLOATING_COMBAT_TEXT := preload("res://scripts/effects/floating_combat_tex
 @export var idle_texture: Texture2D
 @export var run_texture: Texture2D
 @export var attack_texture: Texture2D
+@export var cast_texture: Texture2D
 @export var hurt_texture: Texture2D
+@export var idle_frame_count := 8
+@export var run_frame_count := 8
+@export var attack_frame_count := 8
+@export var cast_frame_count := 8
+@export var hurt_frame_count := 2
+@export var idle_hframes := 8
+@export var run_hframes := 8
+@export var attack_hframes := 8
+@export var cast_hframes := 8
+@export var hurt_hframes := 2
+@export var idle_vframes := 1
+@export var run_vframes := 1
+@export var attack_vframes := 1
+@export var cast_vframes := 1
+@export var hurt_vframes := 1
+@export var use_direction_rows := false
+@export var direction_row_up := 0
+@export var direction_row_left := 0
+@export var direction_row_down := 0
+@export var direction_row_right := 0
+@export var dead_frame_index := 0
 
 @onready var sprite: Sprite2D = $Sprite2D
 @onready var name_label: Label = $NameLabel
@@ -19,11 +41,10 @@ const FLOATING_COMBAT_TEXT := preload("res://scripts/effects/floating_combat_tex
 @onready var attack_marker: ColorRect = $AttackMarker
 @onready var camera: Camera2D = $Camera2D
 
-const FRAME_COUNT := 8
-const HURT_FRAME_COUNT := 2
 const IDLE_FPS := 4.0
 const RUN_FPS := 10.0
 const ATTACK_FPS := 14.0
+const CAST_FPS := 8.0
 const HURT_FPS := 8.0
 const CHAT_BUBBLE_SECONDS := 4.0
 const ACTION_BUBBLE_SECONDS := 1.0
@@ -31,6 +52,7 @@ const HOVER_RECT := Rect2(Vector2(-32.0, -48.0), Vector2(64.0, 112.0))
 const STRIKE_SKILL_NAME := "strike"
 const SWIFT_RAID_SKILL_NAME := "swift_raid"
 const FAST_BOI_SKILL_NAME := "fast_boi"
+const WAIT_BOI_SKILL_NAME := "wait_boi"
 const STRIKE_ATTACK_FORWARD_OFFSET := 28.0
 const SWIFT_RAID_HIT_COUNT := 3
 const SWIFT_RAID_FORWARD_OFFSET := 22.0
@@ -49,6 +71,7 @@ const SPELL_CAST_SECONDS := 0.46
 const SPELL_CAST_COLOR := Color(1.0, 1.0, 1.0, 1.0)
 const HEAL_CAST_COLOR := Color(0.42, 1.0, 0.58, 1.0)
 const BUFF_CAST_COLOR := Color(0.32, 0.72, 1.0, 1.0)
+const DEBUFF_CAST_COLOR := Color(0.74, 0.38, 1.0, 1.0)
 const REVIVE_WAIT_SECONDS := 3.0
 const REVIVE_HEALTH_RATIO := 1.0
 const REVIVE_FALLBACK_POSITION := Vector2(240, 220)
@@ -63,6 +86,7 @@ var _attack_time := 0.0
 var _stun_time := 0.0
 var _cast_time := 0.0
 var _cast_duration := 0.0
+var _cast_interrupt_id := 0
 var _spell_cast_time := 0.0
 var _spell_cast_duration := SPELL_CAST_SECONDS
 var _spell_cast_color := SPELL_CAST_COLOR
@@ -70,8 +94,10 @@ var _chat_bubble_time := 0.0
 var _animation_time := 0.0
 var _current_animation := ""
 var _visual_velocity := Vector2.ZERO
+var _visual_facing_direction := Vector2.RIGHT
 var _server_facing_left := false
 var _server_aim_direction := Vector2.RIGHT
+var _server_is_skill_aiming_active := false
 var _facing_left := false
 var _aim_direction := Vector2.RIGHT
 var _is_skill_aiming_active := false
@@ -80,6 +106,9 @@ var _skill_facing_lock_left := false
 var _fast_boi_time := 0.0
 var _fast_boi_duration := 0.0
 var _fast_boi_speed_multiplier := 1.0
+var _wait_boi_time := 0.0
+var _wait_boi_duration := 0.0
+var _wait_boi_speed_multiplier := 1.0
 var _chat_bubble_box: PanelContainer
 var _chat_bubble: Label
 var _chat_bubble_tail: Polygon2D
@@ -110,8 +139,8 @@ func _ready() -> void:
 	health_bar.value = _health
 	_apply_health_bar_style()
 	_apply_stamina_bar_style()
-	sprite.hframes = FRAME_COUNT
-	sprite.vframes = 1
+	sprite.hframes = idle_hframes
+	sprite.vframes = idle_vframes
 	_set_animation("idle")
 	_build_spell_cast_floor_circle()
 	_build_cast_progress_bar()
@@ -140,16 +169,28 @@ func _physics_process(delta: float) -> void:
 		if _fast_boi_time <= 0.0:
 			_fast_boi_duration = 0.0
 			_fast_boi_speed_multiplier = 1.0
+	if _wait_boi_time > 0.0:
+		_wait_boi_time = maxf(_wait_boi_time - delta, 0.0)
+		if _wait_boi_time <= 0.0:
+			_wait_boi_duration = 0.0
+			_wait_boi_speed_multiplier = 1.0
 
 	if multiplayer.is_server():
 		var input_vector := _server_input
 		var facing_left := _server_facing_left
 		var aim_direction := _server_aim_direction
+		var is_skill_aiming_active := _server_is_skill_aiming_active
 		if peer_id == multiplayer.get_unique_id():
 			input_vector = _read_input()
 			aim_direction = _read_mouse_aim_direction()
+			is_skill_aiming_active = _is_skill_aiming_active
 			facing_left = _resolve_facing_left(input_vector, aim_direction, _facing_left)
 
+		var visual_facing_direction := _resolve_visual_facing_direction(
+			input_vector,
+			aim_direction,
+			is_skill_aiming_active
+		)
 		if _is_dead or _stun_time > 0.0 or _cast_time > 0.0:
 			input_vector = Vector2.ZERO
 
@@ -159,6 +200,7 @@ func _physics_process(delta: float) -> void:
 		else:
 			velocity = Vector2.ZERO
 		_visual_velocity = velocity
+		_visual_facing_direction = visual_facing_direction
 		_facing_left = facing_left
 		_aim_direction = aim_direction
 		_sync_state.rpc(
@@ -169,14 +211,22 @@ func _physics_process(delta: float) -> void:
 			aim_direction,
 			_stun_time,
 			_fast_boi_time,
-			_fast_boi_duration
+			_fast_boi_duration,
+			_wait_boi_time,
+			_wait_boi_duration,
+			_visual_facing_direction
 		)
 	else:
 		if _is_local_player():
 			_aim_direction = _read_mouse_aim_direction()
 			var input_vector := _read_input()
 			_facing_left = _resolve_facing_left(input_vector, _aim_direction, _facing_left)
-			_send_input.rpc_id(1, input_vector, _facing_left, _aim_direction)
+			_visual_facing_direction = _resolve_visual_facing_direction(
+				input_vector,
+				_aim_direction,
+				_is_skill_aiming_active
+			)
+			_send_input.rpc_id(1, input_vector, _facing_left, _aim_direction, _is_skill_aiming_active)
 
 	if _attack_time > 0.0:
 		_attack_time = max(_attack_time - delta, 0.0)
@@ -198,9 +248,6 @@ func _unhandled_input(event: InputEvent) -> void:
 		return
 	if _is_dead:
 		return
-	if event is InputEventMouseButton and event.button_index == MOUSE_BUTTON_LEFT and event.pressed:
-		try_attack()
-		get_viewport().set_input_as_handled()
 
 
 func try_attack() -> void:
@@ -233,6 +280,10 @@ func try_skill(skill_name: String, target_peer_id: int = -1) -> void:
 	var cast_direction := _aim_direction
 	if cast_direction.length_squared() <= 0.0:
 		cast_direction = Vector2.LEFT if _facing_left else Vector2.RIGHT
+	var cast_interrupt_id := _cast_interrupt_id
+	if cast_time > 0.0:
+		_cast_interrupt_id += 1
+		cast_interrupt_id = _cast_interrupt_id
 	var facing_lock_duration := cast_time + _attack_animation_seconds()
 	if skill_name == SWIFT_RAID_SKILL_NAME:
 		facing_lock_duration = cast_time + (_attack_animation_seconds() * SWIFT_RAID_HIT_COUNT)
@@ -242,6 +293,8 @@ func try_skill(skill_name: String, target_peer_id: int = -1) -> void:
 		_play_skill_cast_visuals(skill_type, cast_time)
 		if cast_time > 0.0:
 			await get_tree().create_timer(cast_time).timeout
+			if cast_interrupt_id != _cast_interrupt_id:
+				return
 		if not is_inside_tree():
 			return
 		_finish_skill_cast(
@@ -263,6 +316,8 @@ func try_skill(skill_name: String, target_peer_id: int = -1) -> void:
 		_play_skill_cast_visuals_rpc(skill_type, cast_time)
 		if cast_time > 0.0:
 			await get_tree().create_timer(cast_time).timeout
+			if cast_interrupt_id != _cast_interrupt_id:
+				return
 		if not is_inside_tree():
 			return
 		_finish_skill_cast(
@@ -283,7 +338,12 @@ func try_skill(skill_name: String, target_peer_id: int = -1) -> void:
 
 
 @rpc("any_peer", "unreliable")
-func _send_input(input_vector: Vector2, facing_left: bool, aim_direction: Vector2) -> void:
+func _send_input(
+	input_vector: Vector2,
+	facing_left: bool,
+	aim_direction: Vector2,
+	is_skill_aiming_active: bool = false
+) -> void:
 	if not multiplayer.is_server():
 		return
 	if multiplayer.get_remote_sender_id() != peer_id:
@@ -291,6 +351,7 @@ func _send_input(input_vector: Vector2, facing_left: bool, aim_direction: Vector
 	_server_input = input_vector.limit_length(1.0)
 	_server_facing_left = facing_left
 	_server_aim_direction = aim_direction.normalized()
+	_server_is_skill_aiming_active = is_skill_aiming_active
 
 
 @rpc("any_peer", "reliable")
@@ -334,8 +395,9 @@ func _play_skill(bubble_text: String, cast_time: float = 0.0) -> void:
 		return
 	if cast_time > 0.0:
 		_start_cast_progress(cast_time)
+		_set_animation("cast")
 	else:
-		_attack_time = float(FRAME_COUNT) / ATTACK_FPS
+		_attack_time = _attack_animation_seconds()
 		_set_animation("attack")
 	attack_marker.visible = false
 	_show_chat_bubble(bubble_text, ACTION_BUBBLE_SECONDS)
@@ -348,6 +410,8 @@ func _play_skill_cast_visuals(skill_type: String, cast_time: float) -> void:
 		_play_spell_cast_floor_circle(maxf(cast_time, SPELL_CAST_SECONDS), HEAL_CAST_COLOR)
 	elif skill_type == "buff":
 		_play_spell_cast_floor_circle(maxf(cast_time, SPELL_CAST_SECONDS), BUFF_CAST_COLOR)
+	elif skill_type == "debuff":
+		_play_spell_cast_floor_circle(maxf(cast_time, SPELL_CAST_SECONDS), DEBUFF_CAST_COLOR)
 
 
 func _play_skill_cast_visuals_rpc(skill_type: String, cast_time: float) -> void:
@@ -357,6 +421,8 @@ func _play_skill_cast_visuals_rpc(skill_type: String, cast_time: float) -> void:
 		_play_spell_cast_floor_circle.rpc(maxf(cast_time, SPELL_CAST_SECONDS), HEAL_CAST_COLOR)
 	elif skill_type == "buff":
 		_play_spell_cast_floor_circle.rpc(maxf(cast_time, SPELL_CAST_SECONDS), BUFF_CAST_COLOR)
+	elif skill_type == "debuff":
+		_play_spell_cast_floor_circle.rpc(maxf(cast_time, SPELL_CAST_SECONDS), DEBUFF_CAST_COLOR)
 
 
 func _finish_skill_cast(
@@ -398,8 +464,21 @@ func _finish_skill_cast(
 func _play_skill_release_animation() -> void:
 	_cast_time = 0.0
 	_set_cast_progress_visible(false)
-	_attack_time = float(FRAME_COUNT) / ATTACK_FPS
+	_attack_time = _attack_animation_seconds()
 	_set_animation("attack")
+
+
+@rpc("authority", "call_local", "reliable")
+func _cancel_active_cast() -> void:
+	if _cast_time <= 0.0:
+		return
+
+	_cast_interrupt_id += 1
+	_cast_time = 0.0
+	_cast_duration = 0.0
+	_spell_cast_time = 0.0
+	_set_cast_progress_visible(false)
+	_set_spell_cast_floor_visible(false)
 
 
 @rpc("authority", "call_local", "reliable")
@@ -441,7 +520,10 @@ func _sync_state(
 	aim_direction: Vector2,
 	stun_time: float,
 	fast_boi_time: float = 0.0,
-	fast_boi_duration: float = 0.0
+	fast_boi_duration: float = 0.0,
+	wait_boi_time: float = 0.0,
+	wait_boi_duration: float = 0.0,
+	visual_facing_direction: Vector2 = Vector2.RIGHT
 ) -> void:
 	position = server_position
 	_update_draw_order()
@@ -450,10 +532,15 @@ func _sync_state(
 	_visual_velocity = server_velocity
 	_facing_left = facing_left
 	_aim_direction = aim_direction.normalized()
+	if visual_facing_direction.length_squared() > 0.01:
+		_visual_facing_direction = visual_facing_direction.normalized()
 	_stun_time = stun_time
 	_fast_boi_time = maxf(fast_boi_time, 0.0)
 	_fast_boi_duration = maxf(fast_boi_duration, 0.0)
 	_fast_boi_speed_multiplier = 1.15 if _fast_boi_time > 0.0 else 1.0
+	_wait_boi_time = maxf(wait_boi_time, 0.0)
+	_wait_boi_duration = maxf(wait_boi_duration, 0.0)
+	_wait_boi_speed_multiplier = 0.85 if _wait_boi_time > 0.0 else 1.0
 	health_bar.value = _health
 
 
@@ -487,6 +574,9 @@ func _apply_skill_effect(
 	if skill_type == "buff":
 		_apply_buff_skill(skill_name, buff_speed_percent, buff_duration, target_peer_id)
 		return
+	if skill_type == "debuff":
+		_apply_debuff_skill(skill_name, buff_speed_percent, buff_duration, target_peer_id)
+		return
 
 	if skill_name == "fireball":
 		return
@@ -513,6 +603,22 @@ func _apply_buff_skill(
 	target.call("_receive_fast_boi_buff", buff_speed_percent, buff_duration)
 
 
+func _apply_debuff_skill(
+	skill_name: String,
+	debuff_speed_percent: float,
+	debuff_duration: float,
+	target_id: int = -1
+) -> void:
+	if skill_name != WAIT_BOI_SKILL_NAME or debuff_duration <= 0.0:
+		return
+
+	var target := _find_debuff_target(target_id)
+	if target == null or not target.has_method("_receive_wait_boi_debuff"):
+		return
+
+	target.call("_receive_wait_boi_debuff", debuff_speed_percent, debuff_duration)
+
+
 func _receive_fast_boi_buff(buff_speed_percent: float, buff_duration: float) -> void:
 	if not multiplayer.is_server() and multiplayer.multiplayer_peer != null:
 		return
@@ -524,8 +630,22 @@ func _receive_fast_boi_buff(buff_speed_percent: float, buff_duration: float) -> 
 	_fast_boi_speed_multiplier = 1.0 + maxf(buff_speed_percent, 0.0) / 100.0
 
 
+func _receive_wait_boi_debuff(debuff_speed_percent: float, debuff_duration: float) -> void:
+	if not multiplayer.is_server() and multiplayer.multiplayer_peer != null:
+		return
+	if _is_dead:
+		return
+
+	_wait_boi_duration = debuff_duration
+	_wait_boi_time = debuff_duration
+	_wait_boi_speed_multiplier = maxf(1.0 - maxf(debuff_speed_percent, 0.0) / 100.0, 0.0)
+
+
 func _get_move_speed_multiplier() -> float:
-	return _fast_boi_speed_multiplier if _fast_boi_time > 0.0 else 1.0
+	var multiplier := _fast_boi_speed_multiplier if _fast_boi_time > 0.0 else 1.0
+	if _wait_boi_time > 0.0:
+		multiplier *= _wait_boi_speed_multiplier
+	return multiplier
 
 
 func _apply_swift_raid_damage(amount: int, attack_range: float) -> void:
@@ -616,6 +736,32 @@ func _find_player_skill_target(target_peer_id: int = -1) -> Node:
 	return self
 
 
+func _find_debuff_target(target_id: int = -1) -> Node:
+	var players := get_parent()
+	if players == null:
+		return null
+
+	if target_id >= 0:
+		var player_target := players.get_node_or_null(str(target_id))
+		if player_target != null and player_target != self:
+			return player_target
+		return null
+
+	if target_id <= -2:
+		var world := players.get_parent()
+		if world == null:
+			return null
+		var enemies := world.get_node_or_null("Enemies")
+		if enemies == null:
+			return null
+		var enemy_index := -target_id - 2
+		if enemy_index < 0 or enemy_index >= enemies.get_child_count():
+			return null
+		return enemies.get_child(enemy_index)
+
+	return null
+
+
 func _receive_heal(amount: int) -> void:
 	if not multiplayer.is_server() and multiplayer.multiplayer_peer != null:
 		return
@@ -683,13 +829,18 @@ func _take_test_damage(amount: int, _attacker: Node = null) -> void:
 	var damage_dealt := mini(maxi(amount, 0), _health)
 	_health = maxi(_health - amount, 0)
 	health_bar.value = _health
-	if _health <= 0:
-		_die()
 	if damage_dealt > 0:
+		if _cast_time > 0.0:
+			if multiplayer.multiplayer_peer == null:
+				_cancel_active_cast()
+			else:
+				_cancel_active_cast.rpc()
 		if multiplayer.multiplayer_peer == null:
 			_show_damage_number(damage_dealt)
 		else:
 			_show_damage_number.rpc(damage_dealt)
+	if _health <= 0:
+		_die()
 	if amount > 0:
 		_stun_time = max(_stun_time, STUN_SECONDS)
 
@@ -712,32 +863,36 @@ func _is_local_player() -> bool:
 func _update_animation(delta: float) -> void:
 	if _is_dead:
 		_set_animation("dead")
-		sprite.flip_h = _facing_left
-		sprite.frame = 0
+		sprite.flip_h = _should_flip_sprite()
+		_set_sprite_animation_frame("dead", dead_frame_index)
 		return
 
 	var is_running := _visual_velocity.length_squared() > 1.0
 	var animation_name := "run" if is_running else "idle"
 	var fps := RUN_FPS if is_running else IDLE_FPS
-	var frame_count := FRAME_COUNT
+	var frame_count := run_frame_count if is_running else idle_frame_count
 
 	if _stun_time > 0.0 and hurt_texture != null:
 		animation_name = "hurt"
 		fps = HURT_FPS
-		frame_count = HURT_FRAME_COUNT
+		frame_count = hurt_frame_count
+	elif _cast_time > 0.0 and cast_texture != null:
+		animation_name = "cast"
+		fps = CAST_FPS
+		frame_count = cast_frame_count
 	elif _attack_time > 0.0 and attack_texture != null:
 		animation_name = "attack"
 		fps = ATTACK_FPS
-		frame_count = FRAME_COUNT
+		frame_count = attack_frame_count
 
 	_set_animation(animation_name)
-	sprite.flip_h = _facing_left
+	sprite.flip_h = _should_flip_sprite()
 
 	_animation_time += delta * fps
 	if animation_name == "attack":
-		sprite.frame = min(int(_animation_time), frame_count - 1)
+		_set_sprite_animation_frame(animation_name, min(int(_animation_time), frame_count - 1))
 	else:
-		sprite.frame = int(_animation_time) % frame_count
+		_set_sprite_animation_frame(animation_name, int(_animation_time) % frame_count)
 
 
 func _set_animation(animation_name: String) -> void:
@@ -748,25 +903,73 @@ func _set_animation(animation_name: String) -> void:
 	_animation_time = 0.0
 	if animation_name == "attack" and attack_texture != null:
 		sprite.texture = attack_texture
-		sprite.hframes = FRAME_COUNT
+		sprite.hframes = attack_hframes
+		sprite.vframes = attack_vframes
+	elif animation_name == "cast" and cast_texture != null:
+		sprite.texture = cast_texture
+		sprite.hframes = cast_hframes
+		sprite.vframes = cast_vframes
 	elif animation_name == "hurt" and hurt_texture != null:
 		sprite.texture = hurt_texture
-		sprite.hframes = HURT_FRAME_COUNT
+		sprite.hframes = hurt_hframes
+		sprite.vframes = hurt_vframes
 	elif animation_name == "dead":
 		if hurt_texture != null:
 			sprite.texture = hurt_texture
-			sprite.hframes = HURT_FRAME_COUNT
+			sprite.hframes = hurt_hframes
+			sprite.vframes = hurt_vframes
 		elif idle_texture != null:
 			sprite.texture = idle_texture
-			sprite.hframes = FRAME_COUNT
+			sprite.hframes = idle_hframes
+			sprite.vframes = idle_vframes
 	elif animation_name == "run" and run_texture != null:
 		sprite.texture = run_texture
-		sprite.hframes = FRAME_COUNT
+		sprite.hframes = run_hframes
+		sprite.vframes = run_vframes
 	elif idle_texture != null:
 		sprite.texture = idle_texture
-		sprite.hframes = FRAME_COUNT
-	sprite.frame = 0
-	sprite.rotation_degrees = 90.0 if animation_name == "dead" else 0.0
+		sprite.hframes = idle_hframes
+		sprite.vframes = idle_vframes
+	_set_sprite_animation_frame(animation_name, 0)
+	sprite.rotation_degrees = 0.0
+
+
+func _set_sprite_animation_frame(animation_name: String, frame_index: int) -> void:
+	var safe_frame_index := clampi(frame_index, 0, maxi(sprite.hframes - 1, 0))
+	if use_direction_rows and sprite.vframes > 1:
+		sprite.frame_coords = Vector2i(safe_frame_index, _get_animation_direction_row(animation_name))
+	else:
+		sprite.frame = safe_frame_index
+
+
+func _get_animation_direction_row(animation_name: String) -> int:
+	var direction := _get_animation_direction(animation_name)
+	var row := direction_row_down
+	if absf(direction.x) >= absf(direction.y) and absf(direction.x) > 0.01:
+		row = direction_row_left if direction.x < 0.0 else direction_row_right
+	elif absf(direction.y) > 0.01:
+		row = direction_row_up if direction.y < 0.0 else direction_row_down
+	elif _facing_left:
+		row = direction_row_left
+	else:
+		row = direction_row_right
+	return clampi(row, 0, maxi(sprite.vframes - 1, 0))
+
+
+func _get_animation_direction(animation_name: String) -> Vector2:
+	if animation_name == "attack" and _skill_facing_lock_time > 0.0:
+		return _visual_facing_direction
+	if _is_skill_aiming_active and _aim_direction.length_squared() > 0.01:
+		return _aim_direction.normalized()
+	if animation_name == "run" and _visual_velocity.length_squared() > 1.0:
+		return _visual_velocity.normalized()
+	if _visual_facing_direction.length_squared() > 0.01:
+		return _visual_facing_direction.normalized()
+	return Vector2.LEFT if _facing_left else Vector2.RIGHT
+
+
+func _should_flip_sprite() -> bool:
+	return false if use_direction_rows and sprite.vframes > 1 else _facing_left
 
 
 func _update_name_hover() -> void:
@@ -852,16 +1055,32 @@ func _resolve_facing_left(input_vector: Vector2, aim_direction: Vector2, fallbac
 	return fallback_facing_left
 
 
+func _resolve_visual_facing_direction(
+	input_vector: Vector2,
+	aim_direction: Vector2,
+	is_skill_aiming_active: bool
+) -> Vector2:
+	if _skill_facing_lock_time > 0.0:
+		return _visual_facing_direction
+	if is_skill_aiming_active and aim_direction.length_squared() > 0.01:
+		return aim_direction.normalized()
+	if input_vector.length_squared() > 0.01:
+		return input_vector.normalized()
+	return _visual_facing_direction
+
+
 func _lock_skill_facing(direction: Vector2, duration: float) -> void:
 	if direction.length_squared() <= 0.0:
 		return
-	_skill_facing_lock_left = direction.x < 0.0
+	var normalized_direction := direction.normalized()
+	_skill_facing_lock_left = normalized_direction.x < 0.0
 	_skill_facing_lock_time = maxf(duration, _attack_animation_seconds())
 	_facing_left = _skill_facing_lock_left
+	_visual_facing_direction = normalized_direction
 
 
 func _attack_animation_seconds() -> float:
-	return float(FRAME_COUNT) / ATTACK_FPS
+	return float(attack_frame_count) / ATTACK_FPS
 
 
 func _read_mouse_aim_direction() -> Vector2:
@@ -1020,10 +1239,25 @@ func _die() -> void:
 	_fast_boi_time = 0.0
 	_fast_boi_duration = 0.0
 	_fast_boi_speed_multiplier = 1.0
+	_wait_boi_time = 0.0
+	_wait_boi_duration = 0.0
+	_wait_boi_speed_multiplier = 1.0
 	_set_cast_progress_visible(false)
 	_set_spell_cast_floor_visible(false)
 	if multiplayer.multiplayer_peer != null:
-		_sync_state.rpc(position, _health, Vector2.ZERO, _facing_left, _aim_direction, _stun_time)
+		_sync_state.rpc(
+			position,
+			_health,
+			Vector2.ZERO,
+			_facing_left,
+			_aim_direction,
+			_stun_time,
+			_fast_boi_time,
+			_fast_boi_duration,
+			_wait_boi_time,
+			_wait_boi_duration,
+			_visual_facing_direction
+		)
 
 
 func _set_dead(is_dead: bool) -> void:
@@ -1162,7 +1396,19 @@ func _revive_at_center() -> void:
 	_set_dead(false)
 	_update_draw_order()
 	if multiplayer.multiplayer_peer != null:
-		_sync_state.rpc(position, _health, Vector2.ZERO, _facing_left, _aim_direction, 0.0)
+		_sync_state.rpc(
+			position,
+			_health,
+			Vector2.ZERO,
+			_facing_left,
+			_aim_direction,
+			0.0,
+			_fast_boi_time,
+			_fast_boi_duration,
+			_wait_boi_time,
+			_wait_boi_duration,
+			_visual_facing_direction
+		)
 
 
 func _get_center_respawn_position() -> Vector2:

@@ -2,16 +2,16 @@
 
 importer="texture"
 type="CompressedTexture2D"
-uid="uid://c6o3hf7xqcn2m"
-path="res://.godot/imported/Hurt.png-86ff4c8331681ac27b40f59a1e4cb2ae.ctex"
+uid="uid://kj2e4w000d8x"
+path="res://.godot/imported/idle.png-d9ddae1236d71acfdf1499afee89f5a7.ctex"
 metadata={
 "vram_texture": false
 }
 
 [deps]
 
-source_file="res://sprites/player/Hurt.png"
-dest_files=["res://.godot/imported/Hurt.png-86ff4c8331681ac27b40f59a1e4cb2ae.ctex"]
+source_file="res://sprites/player2/lpc_male_animations_2026-05-23T15-30-15/games/idle.png"
+dest_files=["res://.godot/imported/idle.png-d9ddae1236d71acfdf1499afee89f5a7.ctex"]
 
 [params]
 

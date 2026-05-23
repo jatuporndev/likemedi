@@ -7,7 +7,6 @@
     "strike",
     "strike",
     "strike",
-    "strike",
     "fireball",
     "fireball",
     "fireball",
@@ -21,6 +20,8 @@
     "heal",
     "heal",
     "fast_boi",
-    "fast_boi"
+    "fast_boi",
+    "wait_boi",
+    "wait_boi"
   ]
 }

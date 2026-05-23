@@ -1,8 +1,9 @@
 extends Node2D
 
 const ENEMY_SCENE := preload("res://scenes/enemies/enemy_bot.tscn")
-const MAX_ENEMIES := 2
+const MAX_ENEMIES := 3
 const RESPAWN_SECONDS := 60.0
+const ENEMY_IDS := ["e1", "e2"]
 const SPAWN_RECT := Rect2(Vector2(-620, -370), Vector2(1840, 1240))
 const DRAW_ORDER_MIN := -4096
 const ROCK_DRAW_ORDER_FOOT_OFFSET := 21.0
@@ -19,7 +20,7 @@ func _ready() -> void:
 
 	if multiplayer.is_server():
 		for i in range(MAX_ENEMIES):
-			_spawn_random_enemy()
+			_spawn_random_enemy(str(ENEMY_IDS[i % ENEMY_IDS.size()]))
 		var respawn_timer := Timer.new()
 		respawn_timer.wait_time = RESPAWN_SECONDS
 		respawn_timer.autostart = true
@@ -73,7 +74,7 @@ func _on_respawn_timer_timeout() -> void:
 		_spawn_random_enemy()
 
 
-func _spawn_random_enemy() -> void:
+func _spawn_random_enemy(preferred_enemy_id: String = "") -> void:
 	if _get_enemy_count() >= MAX_ENEMIES:
 		return
 
@@ -84,10 +85,14 @@ func _spawn_random_enemy() -> void:
 		_rng.randf_range(SPAWN_RECT.position.y, SPAWN_RECT.end.y)
 	)
 
+	var enemy_id := preferred_enemy_id
+	if enemy_id.is_empty():
+		enemy_id = str(ENEMY_IDS[_rng.randi_range(0, ENEMY_IDS.size() - 1)])
+
 	if multiplayer.multiplayer_peer == null:
-		spawn_enemy(enemy_name, spawn_position, "e1")
+		spawn_enemy(enemy_name, spawn_position, enemy_id)
 	else:
-		spawn_enemy.rpc(enemy_name, spawn_position, "e1")
+		spawn_enemy.rpc(enemy_name, spawn_position, enemy_id)
 
 
 @rpc("authority", "call_local", "reliable")

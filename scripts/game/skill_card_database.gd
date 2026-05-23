@@ -137,6 +137,21 @@ static func _fallback_definition(skill_name: String) -> Dictionary:
 			"bubble_text": "Fast Boi!",
 			"art_color": Color(0.10, 0.56, 0.82, 1.0),
 		}
+	if skill_name == "wait_boi":
+		return {
+			"title": "Wait Boi",
+			"type": "debuff",
+			"cost": 2,
+			"cast_time": 0.5,
+			"damage": 0,
+			"heal": 0,
+			"range": 0.0,
+			"buff_speed_percent": 15.0,
+			"buff_duration": 5.0,
+			"description": "-15% move speed for 5 sec",
+			"bubble_text": "Wait Boi!",
+			"art_color": Color(0.42, 0.16, 0.58, 1.0),
+		}
 	return {
 		"title": "Strike",
 		"type": "attack",

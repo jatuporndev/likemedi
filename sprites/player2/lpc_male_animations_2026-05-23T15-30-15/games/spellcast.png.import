@@ -2,16 +2,16 @@
 
 importer="texture"
 type="CompressedTexture2D"
-uid="uid://dqpoghhdybhl2"
-path="res://.godot/imported/Attack1.png-882353d85fa34ff380528317eea951dd.ctex"
+uid="uid://0nfjfbbrfogq"
+path="res://.godot/imported/spellcast.png-b0234ec22f3ae34422393d977d65fed8.ctex"
 metadata={
 "vram_texture": false
 }
 
 [deps]
 
-source_file="res://sprites/player/Attack1.png"
-dest_files=["res://.godot/imported/Attack1.png-882353d85fa34ff380528317eea951dd.ctex"]
+source_file="res://sprites/player2/lpc_male_animations_2026-05-23T15-30-15/games/spellcast.png"
+dest_files=["res://.godot/imported/spellcast.png-b0234ec22f3ae34422393d977d65fed8.ctex"]
 
 [params]
 

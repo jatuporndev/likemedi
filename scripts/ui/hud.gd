@@ -22,6 +22,10 @@ var _buff_status_panel: PanelContainer
 var _buff_status_icon: Label
 var _buff_status_tooltip: PanelContainer
 var _buff_status_tooltip_label: Label
+var _debuff_status_panel: PanelContainer
+var _debuff_status_icon: Label
+var _debuff_status_tooltip: PanelContainer
+var _debuff_status_tooltip_label: Label
 var _pause_overlay: Control
 var _dragged_skill_card: PanelContainer
 var _release_hint: Label
@@ -80,12 +84,14 @@ const STRIKE_PREVIEW_SEGMENTS := 28
 const STRIKE_PREVIEW_FORWARD_OFFSET := 28.0
 const PLAYER_TARGET_BODY_RECT := Vector2(76.0, 116.0)
 const FAST_BOI_BUFF_WARNING_SECONDS := 10.0
+const WAIT_BOI_DEBUFF_WARNING_SECONDS := 2.0
 const BUFF_STATUS_TOOLTIP_OFFSET := Vector2(14.0, 14.0)
 
 var _hovered_skill_card: PanelContainer
 var _is_dealing_hand := false
 var _hovered_heal_target_peer_id := -1
 var _is_hovering_buff_status := false
+var _is_hovering_debuff_status := false
 
 
 func _ready() -> void:
@@ -96,6 +102,7 @@ func _ready() -> void:
 func _process(delta: float) -> void:
 	_update_player_status_ui()
 	_update_buff_status_ui()
+	_update_debuff_status_ui()
 	_update_end_hand_button()
 	if _fps_label != null:
 		_fps_label.text = "FPS %d" % Engine.get_frames_per_second()
@@ -162,6 +169,7 @@ func _build_ui() -> void:
 
 	_build_player_status_card()
 	_build_buff_status_ui()
+	_build_debuff_status_ui()
 
 	var chat_panel := PanelContainer.new()
 	chat_panel.anchor_left = 0.0
@@ -585,6 +593,153 @@ func _on_buff_status_mouse_entered() -> void:
 
 func _on_buff_status_mouse_exited() -> void:
 	_is_hovering_buff_status = false
+
+
+func _build_debuff_status_ui() -> void:
+	_debuff_status_panel = PanelContainer.new()
+	_debuff_status_panel.visible = false
+	_debuff_status_panel.anchor_left = 1.0
+	_debuff_status_panel.anchor_top = 0.5
+	_debuff_status_panel.anchor_right = 1.0
+	_debuff_status_panel.anchor_bottom = 0.5
+	_debuff_status_panel.offset_left = -48.0
+	_debuff_status_panel.offset_top = 22.0
+	_debuff_status_panel.offset_right = -16.0
+	_debuff_status_panel.offset_bottom = 54.0
+	_debuff_status_panel.mouse_filter = Control.MOUSE_FILTER_STOP
+	_debuff_status_panel.z_index = 55
+	_debuff_status_panel.add_theme_stylebox_override("panel", _create_debuff_status_panel_style())
+	_debuff_status_panel.mouse_entered.connect(_on_debuff_status_mouse_entered)
+	_debuff_status_panel.mouse_exited.connect(_on_debuff_status_mouse_exited)
+	add_child(_debuff_status_panel)
+
+	var margin := MarginContainer.new()
+	margin.add_theme_constant_override("margin_left", 4)
+	margin.add_theme_constant_override("margin_right", 4)
+	margin.add_theme_constant_override("margin_top", 3)
+	margin.add_theme_constant_override("margin_bottom", 3)
+	_debuff_status_panel.add_child(margin)
+
+	_debuff_status_icon = Label.new()
+	_debuff_status_icon.text = "<<"
+	_debuff_status_icon.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	_debuff_status_icon.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+	_debuff_status_icon.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	_debuff_status_icon.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	_debuff_status_icon.add_theme_font_size_override("font_size", 13)
+	_debuff_status_icon.add_theme_color_override("font_color", Color(0.90, 0.72, 1.0))
+	margin.add_child(_debuff_status_icon)
+
+	_debuff_status_tooltip = PanelContainer.new()
+	_debuff_status_tooltip.visible = false
+	_debuff_status_tooltip.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_debuff_status_tooltip.z_index = 70
+	_debuff_status_tooltip.add_theme_stylebox_override("panel", _create_debuff_status_tooltip_style())
+	add_child(_debuff_status_tooltip)
+
+	var tooltip_margin := MarginContainer.new()
+	tooltip_margin.add_theme_constant_override("margin_left", 6)
+	tooltip_margin.add_theme_constant_override("margin_right", 6)
+	tooltip_margin.add_theme_constant_override("margin_top", 3)
+	tooltip_margin.add_theme_constant_override("margin_bottom", 3)
+	_debuff_status_tooltip.add_child(tooltip_margin)
+
+	_debuff_status_tooltip_label = Label.new()
+	_debuff_status_tooltip_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	_debuff_status_tooltip_label.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+	_debuff_status_tooltip_label.add_theme_font_size_override("font_size", 10)
+	_debuff_status_tooltip_label.add_theme_color_override("font_color", Color(0.96, 0.90, 1.0))
+	tooltip_margin.add_child(_debuff_status_tooltip_label)
+
+
+func _create_debuff_status_panel_style() -> StyleBoxFlat:
+	var panel_style := StyleBoxFlat.new()
+	panel_style.bg_color = Color(0.10, 0.035, 0.16, 0.92)
+	panel_style.border_color = Color(0.70, 0.34, 0.92, 0.86)
+	panel_style.border_width_left = 1
+	panel_style.border_width_top = 1
+	panel_style.border_width_right = 1
+	panel_style.border_width_bottom = 1
+	panel_style.corner_radius_top_left = 5
+	panel_style.corner_radius_top_right = 5
+	panel_style.corner_radius_bottom_left = 5
+	panel_style.corner_radius_bottom_right = 5
+	return panel_style
+
+
+func _create_debuff_status_tooltip_style() -> StyleBoxFlat:
+	var panel_style := StyleBoxFlat.new()
+	panel_style.bg_color = Color(0.055, 0.025, 0.07, 0.94)
+	panel_style.border_color = Color(0.70, 0.34, 0.92, 0.76)
+	panel_style.border_width_left = 1
+	panel_style.border_width_top = 1
+	panel_style.border_width_right = 1
+	panel_style.border_width_bottom = 1
+	panel_style.corner_radius_top_left = 4
+	panel_style.corner_radius_top_right = 4
+	panel_style.corner_radius_bottom_left = 4
+	panel_style.corner_radius_bottom_right = 4
+	return panel_style
+
+
+func _update_debuff_status_ui() -> void:
+	if _debuff_status_panel == null:
+		return
+
+	var remaining_time := _get_wait_boi_remaining_time()
+	var is_active := remaining_time > 0.0
+	_debuff_status_panel.visible = is_active
+	if not is_active:
+		_is_hovering_debuff_status = false
+		if _debuff_status_tooltip != null:
+			_debuff_status_tooltip.visible = false
+		return
+
+	_update_debuff_status_tooltip(remaining_time)
+	var panel_alpha := 1.0
+	if remaining_time < WAIT_BOI_DEBUFF_WARNING_SECONDS:
+		panel_alpha = 0.28 if int(Time.get_ticks_msec() / 250) % 2 == 0 else 1.0
+	_debuff_status_panel.modulate = Color(1.0, 1.0, 1.0, panel_alpha)
+	_debuff_status_icon.modulate = Color.WHITE
+
+
+func _update_debuff_status_tooltip(remaining_time: float) -> void:
+	if _debuff_status_tooltip == null or _debuff_status_tooltip_label == null:
+		return
+
+	_debuff_status_tooltip.visible = _is_hovering_debuff_status
+	if not _is_hovering_debuff_status:
+		return
+
+	_debuff_status_tooltip_label.text = _format_buff_time(remaining_time)
+	_debuff_status_tooltip.reset_size()
+	var tooltip_size := _debuff_status_tooltip.size
+	var viewport_size := get_viewport().get_visible_rect().size
+	var target_position := get_viewport().get_mouse_position() + BUFF_STATUS_TOOLTIP_OFFSET
+	target_position.x = minf(target_position.x, viewport_size.x - tooltip_size.x - 4.0)
+	target_position.y = minf(target_position.y, viewport_size.y - tooltip_size.y - 4.0)
+	target_position.x = maxf(target_position.x, 4.0)
+	target_position.y = maxf(target_position.y, 4.0)
+	_debuff_status_tooltip.position = target_position
+
+
+func _get_wait_boi_remaining_time() -> float:
+	var player := _get_local_player_node()
+	if player == null:
+		return 0.0
+
+	var remaining_time = player.get("_wait_boi_time")
+	if remaining_time is int or remaining_time is float:
+		return maxf(float(remaining_time), 0.0)
+	return 0.0
+
+
+func _on_debuff_status_mouse_entered() -> void:
+	_is_hovering_debuff_status = true
+
+
+func _on_debuff_status_mouse_exited() -> void:
+	_is_hovering_debuff_status = false
 
 
 func _build_pause_menu() -> void:
@@ -1347,7 +1502,7 @@ func _finish_skill_card_drag(_mouse_position: Vector2) -> void:
 	var was_used := false
 	var stamina_cost := _get_card_stamina_cost(_dragged_skill_card)
 	if _skill_stamina.can_spend(stamina_cost):
-		if _requires_player_target_card(_dragged_skill_card) and _hovered_heal_target_peer_id < 0:
+		if _requires_player_target_card(_dragged_skill_card) and _hovered_heal_target_peer_id == -1:
 			_release_hint.text = "Select target"
 		else:
 			was_used = _request_local_skill(_dragged_skill, _hovered_heal_target_peer_id)
@@ -1714,14 +1869,13 @@ func _update_player_target_preview(
 	_skill_preview_label.visible = false
 	_player_target_preview.update_cursor(mouse_position, skill_type)
 
-	var target := _find_player_at_screen_position(mouse_position)
+	var target := _find_skill_target_at_screen_position(mouse_position, skill_type)
 	if target == null:
 		_hovered_heal_target_peer_id = -1
 		_player_target_preview.hide_floor()
 		return mouse_position
 
-	var peer_id = target.get("peer_id")
-	_hovered_heal_target_peer_id = int(peer_id) if peer_id is int or peer_id is float else -1
+	_hovered_heal_target_peer_id = _get_skill_target_id(target)
 	var center := _get_player_floor_target_world_center(target)
 	_player_target_preview.update_floor(center, skill_type)
 	return _get_player_floor_target_center(target)
@@ -1937,6 +2091,72 @@ func _find_player_at_screen_position(screen_position: Vector2) -> Node2D:
 	return best_target
 
 
+func _find_skill_target_at_screen_position(screen_position: Vector2, skill_type: String) -> Node2D:
+	if skill_type != "debuff":
+		return _find_player_at_screen_position(screen_position)
+
+	var world := get_parent()
+	if world == null:
+		return null
+
+	var local_player := _get_local_player_node()
+	var best_target: Node2D = null
+	var best_distance_squared := INF
+	var target_parents: Array[Node] = []
+	var players := world.get_node_or_null("Players")
+	var enemies := world.get_node_or_null("Enemies")
+	if players != null:
+		target_parents.append(players)
+	if enemies != null:
+		target_parents.append(enemies)
+
+	for parent in target_parents:
+		for node in parent.get_children():
+			var target := node as Node2D
+			if target == null or target == local_player or target == _get_player_target_floor_root():
+				continue
+			if not target.is_in_group("damageable"):
+				continue
+			var health = target.get("_health")
+			if (health is int or health is float) and int(health) <= 0:
+				continue
+
+			var center := _get_player_floor_target_center(target)
+			var ellipse_delta := screen_position - center
+			var ellipse_radius_x := PLAYER_TARGET_PREVIEW.FLOOR_RADIUS
+			var ellipse_radius_y := PLAYER_TARGET_PREVIEW.FLOOR_RADIUS * PLAYER_TARGET_PREVIEW.FLOOR_Y_SCALE
+			var ellipse_distance_squared := (
+				(ellipse_delta.x * ellipse_delta.x) / (ellipse_radius_x * ellipse_radius_x)
+				+ (ellipse_delta.y * ellipse_delta.y) / (ellipse_radius_y * ellipse_radius_y)
+			)
+			var distance_squared := center.distance_squared_to(screen_position)
+			var body_center := target.get_global_transform_with_canvas().origin
+			var body_rect := Rect2(body_center - PLAYER_TARGET_BODY_RECT * 0.5, PLAYER_TARGET_BODY_RECT)
+			var is_over_floor_ellipse := ellipse_distance_squared <= 1.0
+			if not is_over_floor_ellipse and not body_rect.has_point(screen_position):
+				continue
+
+			if distance_squared < best_distance_squared:
+				best_distance_squared = distance_squared
+				best_target = target
+
+	return best_target
+
+
+func _get_skill_target_id(target: Node2D) -> int:
+	if target == null:
+		return -1
+
+	var parent := target.get_parent()
+	if parent == null:
+		return -1
+	if parent.name == "Enemies":
+		return -target.get_index() - 2
+
+	var peer_id = target.get("peer_id")
+	return int(peer_id) if peer_id is int or peer_id is float else -1
+
+
 func _get_player_floor_target_center(player: Node2D) -> Vector2:
 	return player.get_global_transform_with_canvas() * PLAYER_TARGET_PREVIEW.FLOOR_OFFSET
 
@@ -2060,4 +2280,4 @@ func _requires_player_target_card(card: PanelContainer) -> bool:
 
 
 func _is_player_target_skill_type(skill_type: String) -> bool:
-	return skill_type == "heal" or skill_type == "buff"
+	return skill_type == "heal" or skill_type == "buff" or skill_type == "debuff"

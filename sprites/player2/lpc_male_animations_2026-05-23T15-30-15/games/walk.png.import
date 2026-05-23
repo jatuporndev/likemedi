@@ -2,16 +2,16 @@
 
 importer="texture"
 type="CompressedTexture2D"
-uid="uid://bkevoepfn5wlq"
-path="res://.godot/imported/Run.png-2ec3522fe7850277faea9d171f9b78ba.ctex"
+uid="uid://cfr68ly460jya"
+path="res://.godot/imported/walk.png-ed9e5de67ac3602a1ca205972fd92ba7.ctex"
 metadata={
 "vram_texture": false
 }
 
 [deps]
 
-source_file="res://sprites/player/Run.png"
-dest_files=["res://.godot/imported/Run.png-2ec3522fe7850277faea9d171f9b78ba.ctex"]
+source_file="res://sprites/player2/lpc_male_animations_2026-05-23T15-30-15/games/walk.png"
+dest_files=["res://.godot/imported/walk.png-ed9e5de67ac3602a1ca205972fd92ba7.ctex"]
 
 [params]
 

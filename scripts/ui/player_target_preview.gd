@@ -9,6 +9,7 @@ const CURSOR_RADIUS := 24.0
 const CURSOR_MARK_LENGTH := 13.0
 const CURSOR_MARK_COUNT := 4
 const TYPE_BUFF := "buff"
+const TYPE_DEBUFF := "debuff"
 const COLOR_CURSOR := "cursor"
 const COLOR_FILL := "fill"
 const COLOR_RING := "ring"
@@ -174,6 +175,14 @@ func _get_colors(skill_type: String) -> Dictionary:
 			COLOR_RING: Color(0.42, 0.78, 1.0),
 			COLOR_INNER_RING: Color(0.72, 0.92, 1.0),
 			COLOR_RUNE: Color(0.24, 0.66, 1.0),
+		}
+	if skill_type == TYPE_DEBUFF:
+		return {
+			COLOR_CURSOR: Color(0.80, 0.48, 1.0, 0.70),
+			COLOR_FILL: Color(0.46, 0.10, 0.72, 0.18),
+			COLOR_RING: Color(0.78, 0.42, 1.0),
+			COLOR_INNER_RING: Color(0.92, 0.72, 1.0),
+			COLOR_RUNE: Color(0.62, 0.24, 1.0),
 		}
 
 	return {
