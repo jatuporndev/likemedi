@@ -7,13 +7,13 @@ const POINTER_NODE_NAME := "Pointer"
 const SPAWN_ANCHOR_NODE_NAME := "SpawnAnchor"
 
 @onready var players: Node2D = $"../Players"
-@onready var player_spawn_point: Node2D = $"../PlayerSpawnPoint"
 
 var _known_players: Dictionary = {}
 
 
 func _ready() -> void:
 	NetworkManager.peer_left.connect(_on_peer_left)
+	await get_tree().process_frame
 	_normalize_player_spawn_point()
 
 	if multiplayer.is_server():
@@ -36,6 +36,8 @@ func request_initial_state() -> void:
 		spawn_player.rpc_id(requester_id, peer_id, data["name"], data["position"])
 
 	var world := get_parent()
+	if world != null and world.has_method("sync_map_to_peer"):
+		world.call("sync_map_to_peer", requester_id)
 	if world != null and world.has_method("sync_enemies_to_peer"):
 		world.call("sync_enemies_to_peer", requester_id)
 
@@ -110,6 +112,7 @@ func _get_local_player() -> Node:
 
 func _get_player_spawn_position() -> Vector2:
 	var base_spawn := FALLBACK_PLAYER_SPAWN
+	var player_spawn_point := _get_player_spawn_point()
 	if player_spawn_point != null:
 		var spawn_anchor := player_spawn_point.get_node_or_null(SPAWN_ANCHOR_NODE_NAME) as Node2D
 		if spawn_anchor != null:
@@ -121,6 +124,7 @@ func _get_player_spawn_position() -> Vector2:
 
 
 func _normalize_player_spawn_point() -> void:
+	var player_spawn_point := _get_player_spawn_point()
 	if player_spawn_point == null:
 		return
 
@@ -130,3 +134,12 @@ func _normalize_player_spawn_point() -> void:
 
 	player_spawn_point.global_position = pointer.global_position
 	pointer.position = Vector2.ZERO
+
+
+func _get_player_spawn_point() -> Node2D:
+	var world := get_parent()
+	if world == null:
+		return null
+
+	var spawn_point := world.find_child("PlayerSpawnPoint", true, false) as Node2D
+	return spawn_point

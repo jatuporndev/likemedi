@@ -15,6 +15,10 @@ var _health_value_label: Label
 var _health_bar: ProgressBar
 var _stamina_value_label: Label
 var _stamina_bar: ProgressBar
+var _hand_stamina_badge: PanelContainer
+var _hand_stamina_label: Label
+var _hand_stamina_badge_style: StyleBoxFlat
+var _hand_stamina_shake_tween: Tween
 var _draw_deck_label: Label
 var _discard_deck_label: Label
 var _end_hand_button: Control
@@ -58,6 +62,11 @@ const CARD_AIM_SELECTED_DIP := 22.0
 const CARD_AIM_HAND_SPREAD_SCALE := 0.86
 const CARD_AIM_HAND_SCALE := 0.69
 const CARD_LAYOUT_TWEEN_SECONDS := 0.16
+const HAND_STAMINA_BADGE_SIZE := 34.0
+const HAND_STAMINA_BADGE_GAP := 24.0
+const HAND_STAMINA_SHAKE_SECONDS := 0.045
+const HAND_STAMINA_SHAKE_ROTATION := 10.0
+const HAND_STAMINA_ERROR_SECONDS := 0.5
 const DECK_SHUFFLE_SECONDS := 2.0
 const DRAW_AFTER_SHUFFLE_DELAY := DECK_SHUFFLE_SECONDS * 0.5
 const HAND_REFILL_START_DELAY := 0.25
@@ -1152,6 +1161,7 @@ func _update_stamina_ui() -> void:
 	]
 	var stamina_bar_value := _get_stamina_bar_value()
 	_stamina_bar.value = stamina_bar_value
+	_update_hand_stamina_badge()
 	_update_local_player_stamina_bar(stamina_bar_value)
 	_update_end_hand_button()
 
@@ -1164,6 +1174,132 @@ func _get_stamina_bar_value() -> float:
 		float(_skill_stamina.current) + recharge_fraction,
 		float(SKILL_STAMINA.MAX_STAMINA)
 	)
+
+
+func _create_hand_stamina_badge_style() -> StyleBoxFlat:
+	var badge_style := StyleBoxFlat.new()
+	_apply_hand_stamina_badge_colors(badge_style, false)
+	badge_style.border_width_left = 2
+	badge_style.border_width_top = 2
+	badge_style.border_width_right = 2
+	badge_style.border_width_bottom = 2
+	badge_style.corner_radius_top_left = int(HAND_STAMINA_BADGE_SIZE * 0.5)
+	badge_style.corner_radius_top_right = int(HAND_STAMINA_BADGE_SIZE * 0.5)
+	badge_style.corner_radius_bottom_left = int(HAND_STAMINA_BADGE_SIZE * 0.5)
+	badge_style.corner_radius_bottom_right = int(HAND_STAMINA_BADGE_SIZE * 0.5)
+	badge_style.shadow_color = Color(0.02, 0.04, 0.05, 0.58)
+	badge_style.shadow_size = 3
+	badge_style.shadow_offset = Vector2(2.0, 3.0)
+	return badge_style
+
+
+func _apply_hand_stamina_badge_colors(badge_style: StyleBoxFlat, is_error: bool) -> void:
+	if badge_style == null:
+		return
+
+	if is_error:
+		badge_style.bg_color = Color(0.48, 0.06, 0.04, 0.98)
+		badge_style.border_color = Color(1.0, 0.30, 0.22, 1.0)
+	else:
+		badge_style.bg_color = Color(0.08, 0.21, 0.26, 0.96)
+		badge_style.border_color = Color(0.70, 0.92, 1.0, 0.96)
+
+
+func _update_hand_stamina_badge() -> void:
+	if _hand_stamina_badge == null or _hand_stamina_label == null:
+		return
+
+	_hand_stamina_label.text = "%d/%d" % [
+		_skill_stamina.current,
+		SKILL_STAMINA.MAX_STAMINA,
+	]
+	_hand_stamina_badge.visible = not _hand_cards.is_empty() or _is_dealing_hand
+	if not _hand_stamina_badge.visible:
+		return
+
+	var hand_count := maxi(_hand_cards.size(), 1)
+	var hand_step := _get_skill_card_hand_step(hand_count)
+	var hand_center := (float(hand_count) - 1.0) * 0.5
+	var left_card_center_offset := -hand_center * hand_step
+	var target_scale := CARD_AIM_HAND_SCALE if _is_dragging_skill_card else CARD_SCREEN_SCALE
+	var scaled_visual_height := CARD_SIZE.y * 0.5 * (1.0 + target_scale)
+	var viewport_width := get_viewport().get_visible_rect().size.x
+	var min_target_x := -viewport_width * 0.5 + CARD_SIDE_MARGIN
+	var max_target_x := viewport_width * 0.5 - CARD_SIZE.x - CARD_SIDE_MARGIN
+	var left_card_x := clampf(left_card_center_offset - CARD_SIZE.x * 0.5, min_target_x, max_target_x)
+	var visual_left := left_card_x + CARD_SIZE.x * 0.5 * (1.0 - target_scale)
+	var badge_x := visual_left - HAND_STAMINA_BADGE_SIZE - HAND_STAMINA_BADGE_GAP
+	var badge_y := -scaled_visual_height - CARD_BOTTOM_MARGIN + (CARD_SIZE.y * target_scale - HAND_STAMINA_BADGE_SIZE) * 0.5
+
+	_hand_stamina_badge.anchor_left = 0.5
+	_hand_stamina_badge.anchor_top = 1.0
+	_hand_stamina_badge.anchor_right = 0.5
+	_hand_stamina_badge.anchor_bottom = 1.0
+	_hand_stamina_badge.offset_left = badge_x
+	_hand_stamina_badge.offset_top = badge_y
+	_hand_stamina_badge.offset_right = badge_x + HAND_STAMINA_BADGE_SIZE
+	_hand_stamina_badge.offset_bottom = badge_y + HAND_STAMINA_BADGE_SIZE
+
+
+func _shake_hand_stamina_badge() -> void:
+	if _hand_stamina_badge == null or not _hand_stamina_badge.visible:
+		return
+	if _hand_stamina_shake_tween != null and _hand_stamina_shake_tween.is_valid():
+		_hand_stamina_shake_tween.kill()
+
+	_apply_hand_stamina_badge_colors(_hand_stamina_badge_style, true)
+	_hand_stamina_label.add_theme_color_override("font_color", Color(1.0, 0.88, 0.82))
+	_hand_stamina_badge.rotation_degrees = 0.0
+	_hand_stamina_badge.scale = Vector2.ONE
+	_hand_stamina_shake_tween = create_tween()
+	_hand_stamina_shake_tween.set_trans(Tween.TRANS_SINE)
+	_hand_stamina_shake_tween.set_ease(Tween.EASE_IN_OUT)
+	_hand_stamina_shake_tween.tween_property(
+		_hand_stamina_badge,
+		"rotation_degrees",
+		-HAND_STAMINA_SHAKE_ROTATION,
+		HAND_STAMINA_SHAKE_SECONDS
+	)
+	_hand_stamina_shake_tween.parallel().tween_property(
+		_hand_stamina_badge,
+		"scale",
+		Vector2(1.12, 0.90),
+		HAND_STAMINA_SHAKE_SECONDS
+	)
+	_hand_stamina_shake_tween.tween_property(
+		_hand_stamina_badge,
+		"rotation_degrees",
+		HAND_STAMINA_SHAKE_ROTATION,
+		HAND_STAMINA_SHAKE_SECONDS
+	)
+	_hand_stamina_shake_tween.parallel().tween_property(
+		_hand_stamina_badge,
+		"scale",
+		Vector2(0.94, 1.08),
+		HAND_STAMINA_SHAKE_SECONDS
+	)
+	_hand_stamina_shake_tween.tween_property(
+		_hand_stamina_badge,
+		"rotation_degrees",
+		0.0,
+		HAND_STAMINA_SHAKE_SECONDS
+	)
+	_hand_stamina_shake_tween.parallel().tween_property(
+		_hand_stamina_badge,
+		"scale",
+		Vector2.ONE,
+		HAND_STAMINA_SHAKE_SECONDS
+	)
+	_hand_stamina_shake_tween.tween_interval(
+		maxf(HAND_STAMINA_ERROR_SECONDS - HAND_STAMINA_SHAKE_SECONDS * 3.0, 0.0)
+	)
+	_hand_stamina_shake_tween.tween_callback(_clear_hand_stamina_badge_error)
+
+
+func _clear_hand_stamina_badge_error() -> void:
+	_apply_hand_stamina_badge_colors(_hand_stamina_badge_style, false)
+	if _hand_stamina_label != null:
+		_hand_stamina_label.add_theme_color_override("font_color", Color(0.86, 0.97, 1.0))
 
 
 func _build_skill_card_ui() -> void:
@@ -1223,6 +1359,28 @@ func _build_skill_card_ui() -> void:
 	_drag_arrow_head.z_index = 36
 	_drag_arrow_head.color = Color(0.62, 0.90, 0.84, 0.82)
 	add_child(_drag_arrow_head)
+
+	_hand_stamina_badge = PanelContainer.new()
+	_hand_stamina_badge.custom_minimum_size = Vector2(HAND_STAMINA_BADGE_SIZE, HAND_STAMINA_BADGE_SIZE)
+	_hand_stamina_badge.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_hand_stamina_badge.pivot_offset = Vector2(HAND_STAMINA_BADGE_SIZE, HAND_STAMINA_BADGE_SIZE) * 0.5
+	_hand_stamina_badge.z_index = 46
+	_hand_stamina_badge.visible = false
+	_hand_stamina_badge_style = _create_hand_stamina_badge_style()
+	_hand_stamina_badge.add_theme_stylebox_override("panel", _hand_stamina_badge_style)
+	add_child(_hand_stamina_badge)
+
+	_hand_stamina_label = Label.new()
+	_hand_stamina_label.custom_minimum_size = Vector2(HAND_STAMINA_BADGE_SIZE, HAND_STAMINA_BADGE_SIZE)
+	_hand_stamina_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	_hand_stamina_label.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+	_hand_stamina_label.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_hand_stamina_label.add_theme_color_override("font_color", Color(0.86, 0.97, 1.0))
+	_hand_stamina_label.add_theme_color_override("font_shadow_color", Color(0.02, 0.04, 0.05, 0.85))
+	_hand_stamina_label.add_theme_constant_override("shadow_offset_x", 1)
+	_hand_stamina_label.add_theme_constant_override("shadow_offset_y", 1)
+	_hand_stamina_label.add_theme_font_size_override("font_size", 9)
+	_hand_stamina_badge.add_child(_hand_stamina_label)
 
 	_release_hint = Label.new()
 	_release_hint.anchor_left = 0.5
@@ -1511,6 +1669,7 @@ func _finish_skill_card_drag(_mouse_position: Vector2) -> void:
 			_update_stamina_ui()
 	else:
 		_release_hint.text = "Need %d stamina" % stamina_cost
+		_shake_hand_stamina_badge()
 
 	_release_hint.visible = false
 	_release_hint.text = "Release to use"
@@ -1926,6 +2085,7 @@ func _reset_skill_card_positions() -> void:
 				rotation *= 0.55
 		var z_order := 60 if card == _dragged_skill_card else 40 + index
 		_reset_skill_card_position(card, center_offset, rise, rotation, z_order)
+	_update_hand_stamina_badge()
 
 
 func _get_skill_card_hand_step(hand_count: int) -> float:

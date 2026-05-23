@@ -3,40 +3,13 @@
 [ext_resource type="Script" uid="uid://cpvs8hugcs0rr" path="res://scripts/game/world.gd" id="1_world"]
 [ext_resource type="Script" uid="uid://usutkv3mrtsw" path="res://scripts/game/game_manager.gd" id="2_game_manager"]
 [ext_resource type="PackedScene" path="res://scenes/ui/hud.tscn" id="3_hud"]
-[ext_resource type="Texture2D" uid="uid://bsu3hjxgxy7b0" path="res://sprites/point/pointer_animation.png" id="4_pointer"]
-[ext_resource type="Script" uid="uid://bynksimnivqay" path="res://scripts/game/y_sorted_sprite.gd" id="5_y_sorted_sprite"]
-
-[sub_resource type="RectangleShape2D" id="RectangleShape2D_spawn_point"]
-size = Vector2(69.99988, 50)
 
 [node name="World" type="Node2D" unique_id=1531107971]
 script = ExtResource("1_world")
 
+[node name="MapRoot" type="Node2D" parent="."]
+
 [node name="Players" type="Node2D" parent="." unique_id=1303724012]
-
-[node name="PlayerSpawnPoint" type="StaticBody2D" parent="." unique_id=427418226]
-position = Vector2(1040.9999, 300)
-
-[node name="CollisionShape2D" type="CollisionShape2D" parent="PlayerSpawnPoint" unique_id=2098966625]
-position = Vector2(13.000122, 58)
-shape = SubResource("RectangleShape2D_spawn_point")
-
-[node name="SpawnAnchor" type="Node2D" parent="PlayerSpawnPoint" unique_id=1740516554]
-position = Vector2(0, 100)
-
-[node name="Pointer" type="Sprite2D" parent="PlayerSpawnPoint" unique_id=1840816354]
-z_as_relative = false
-position = Vector2(-3.9998777, -7.9999995)
-scale = Vector2(0.12, 0.12)
-texture = ExtResource("4_pointer")
-centered = false
-offset = Vector2(-29, -100)
-region_enabled = true
-region_rect = Rect2(0, 0, 480, 840)
-script = ExtResource("5_y_sorted_sprite")
-draw_order_foot_offset = 89.0
-region_animation_frame_count = 3
-region_animation_fps = 4.0
 
 [node name="Enemies" type="Node2D" parent="." unique_id=1503524382]
 

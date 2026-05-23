@@ -1388,7 +1388,8 @@ func _revive_at_center() -> void:
 	if not multiplayer.is_server() and multiplayer.multiplayer_peer != null:
 		return
 
-	position = _get_center_respawn_position()
+	if not _revive_at_crystal_spawn():
+		position = _get_center_respawn_position()
 	_health = maxi(int(round(float(_max_health) * REVIVE_HEALTH_RATIO)), 1)
 	health_bar.value = _health
 	velocity = Vector2.ZERO
@@ -1411,6 +1412,18 @@ func _revive_at_center() -> void:
 		)
 
 
+func _revive_at_crystal_spawn() -> bool:
+	var players_parent := get_parent() as Node2D
+	if players_parent == null:
+		return false
+
+	var world := players_parent.get_parent()
+	if world == null or not world.has_method("revive_player_at_spawn"):
+		return false
+
+	return bool(world.call("revive_player_at_spawn", self))
+
+
 func _get_center_respawn_position() -> Vector2:
 	var players_parent := get_parent() as Node2D
 	if players_parent == null:
@@ -1420,7 +1433,7 @@ func _get_center_respawn_position() -> Vector2:
 	if world == null:
 		return REVIVE_FALLBACK_POSITION
 
-	var spawn_point := world.get_node_or_null("PlayerSpawnPoint") as Node2D
+	var spawn_point := world.find_child("PlayerSpawnPoint", true, false) as Node2D
 	if spawn_point == null:
 		return REVIVE_FALLBACK_POSITION
 

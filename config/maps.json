@@ -1,0 +1,25 @@
+{
+  "res://scenes/world/maps/map_1.tscn": {
+    "enemies": [
+      {
+        "enemy_id": "e1",
+        "count": 6,
+        "respawn_seconds": 30
+      },
+      {
+        "enemy_id": "e2",
+        "count": 2,
+        "respawn_seconds": 45
+      }
+    ]
+  },
+  "res://scenes/world/maps/map_2.tscn": {
+    "enemies": [
+      {
+        "enemy_id": "e2",
+        "count": 4,
+        "respawn_seconds": 40
+      }
+    ]
+  }
+}
