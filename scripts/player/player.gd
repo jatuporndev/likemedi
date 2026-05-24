@@ -53,6 +53,7 @@ const STRIKE_SKILL_NAME := "strike"
 const SWIFT_RAID_SKILL_NAME := "swift_raid"
 const FAST_BOI_SKILL_NAME := "fast_boi"
 const WAIT_BOI_SKILL_NAME := "wait_boi"
+const JUMP_SKILL_NAME := "jump"
 const STRIKE_ATTACK_FORWARD_OFFSET := 28.0
 const SWIFT_RAID_HIT_COUNT := 3
 const SWIFT_RAID_FORWARD_OFFSET := 22.0
@@ -76,6 +77,7 @@ const REVIVE_WAIT_SECONDS := 3.0
 const REVIVE_HEALTH_RATIO := 1.0
 const REVIVE_FALLBACK_POSITION := Vector2(240, 220)
 const SPAWN_ANCHOR_NODE_NAME := "SpawnAnchor"
+const JUMP_RANDOM_ATTEMPTS := 48
 
 var _server_input := Vector2.ZERO
 var _health := 100
@@ -569,13 +571,13 @@ func _apply_skill_effect(
 	target_peer_id: int = -1
 ) -> void:
 	if skill_type == "heal":
-		_heal_target(heal, target_peer_id)
+		_heal_target(heal, attack_range, target_peer_id)
 		return
 	if skill_type == "buff":
-		_apply_buff_skill(skill_name, buff_speed_percent, buff_duration, target_peer_id)
+		_apply_buff_skill(skill_name, attack_range, buff_speed_percent, buff_duration, target_peer_id)
 		return
 	if skill_type == "debuff":
-		_apply_debuff_skill(skill_name, buff_speed_percent, buff_duration, target_peer_id)
+		_apply_debuff_skill(skill_name, attack_range, buff_speed_percent, buff_duration, target_peer_id)
 		return
 
 	if skill_name == "fireball":
@@ -589,22 +591,88 @@ func _apply_skill_effect(
 
 func _apply_buff_skill(
 	skill_name: String,
+	cast_range: float,
 	buff_speed_percent: float,
 	buff_duration: float,
 	target_peer_id: int = -1
 ) -> void:
+	if skill_name == JUMP_SKILL_NAME:
+		_apply_jump_skill()
+		return
 	if skill_name != FAST_BOI_SKILL_NAME or buff_duration <= 0.0:
 		return
 
 	var target := _find_player_skill_target(target_peer_id)
 	if target == null or not target.has_method("_receive_fast_boi_buff"):
 		return
+	if not _is_skill_target_in_range(target, cast_range):
+		return
 
 	target.call("_receive_fast_boi_buff", buff_speed_percent, buff_duration)
 
 
+func _apply_jump_skill() -> void:
+	if multiplayer.multiplayer_peer != null and not multiplayer.is_server():
+		return
+	if _is_dead:
+		return
+
+	var world := _get_world_node()
+	if world == null or not world.has_method("get_current_map_rect"):
+		return
+
+	var map_rect: Rect2 = world.call("get_current_map_rect")
+	if map_rect.size.x <= 0.0 or map_rect.size.y <= 0.0:
+		return
+
+	var destination := _get_random_walkable_point_in_rect(map_rect, global_position)
+	if destination == global_position:
+		return
+
+	global_position = destination
+	velocity = Vector2.ZERO
+
+
+func _get_world_node() -> Node:
+	var current := get_tree().current_scene
+	if current != null and current.has_method("get_current_map_rect"):
+		return current
+
+	var node: Node = self
+	while node != null:
+		if node.has_method("get_current_map_rect"):
+			return node
+		node = node.get_parent()
+
+	return null
+
+
+func _get_random_walkable_point_in_rect(map_rect: Rect2, fallback: Vector2) -> Vector2:
+	var attempts := maxi(JUMP_RANDOM_ATTEMPTS, 1)
+	for _attempt in range(attempts):
+		var candidate := Vector2(
+			randf_range(map_rect.position.x, map_rect.end.x),
+			randf_range(map_rect.position.y, map_rect.end.y)
+		)
+		if _is_point_walkable(candidate):
+			return candidate
+	return map_rect.get_center() if _is_point_walkable(map_rect.get_center()) else fallback
+
+
+func _is_point_walkable(candidate: Vector2) -> bool:
+	var query := PhysicsPointQueryParameters2D.new()
+	query.position = candidate
+	query.collide_with_areas = true
+	query.collide_with_bodies = true
+	query.collision_mask = 0xffffffff
+
+	var hits := get_world_2d().direct_space_state.intersect_point(query, 1)
+	return hits.is_empty()
+
+
 func _apply_debuff_skill(
 	skill_name: String,
+	cast_range: float,
 	debuff_speed_percent: float,
 	debuff_duration: float,
 	target_id: int = -1
@@ -614,6 +682,8 @@ func _apply_debuff_skill(
 
 	var target := _find_debuff_target(target_id)
 	if target == null or not target.has_method("_receive_wait_boi_debuff"):
+		return
+	if not _is_skill_target_in_range(target, cast_range):
 		return
 
 	target.call("_receive_wait_boi_debuff", debuff_speed_percent, debuff_duration)
@@ -708,12 +778,14 @@ func _find_swift_raid_target(attack_range: float) -> Node:
 	return closest_target
 
 
-func _heal_target(amount: int, target_peer_id: int = -1) -> void:
+func _heal_target(amount: int, cast_range: float, target_peer_id: int = -1) -> void:
 	if amount <= 0:
 		return
 
 	var target := _find_heal_target(target_peer_id)
 	if target == null or not target.has_method("_receive_heal"):
+		return
+	if not _is_skill_target_in_range(target, cast_range):
 		return
 
 	target.call("_receive_heal", amount)
@@ -721,6 +793,20 @@ func _heal_target(amount: int, target_peer_id: int = -1) -> void:
 
 func _find_heal_target(target_peer_id: int = -1) -> Node:
 	return _find_player_skill_target(target_peer_id)
+
+
+func _is_skill_target_in_range(target: Node, cast_range: float) -> bool:
+	if target == null:
+		return false
+	if cast_range <= 0.0:
+		return true
+	if target == self:
+		return true
+
+	var target_2d := target as Node2D
+	if target_2d == null:
+		return false
+	return global_position.distance_to(target_2d.global_position) <= cast_range
 
 
 func _find_player_skill_target(target_peer_id: int = -1) -> Node:

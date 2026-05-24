@@ -1,21 +1,23 @@
-[gd_scene load_steps=3 format=3]
+[gd_scene format=3 uid="uid://cwxgahcecok4o"]
 
 [ext_resource type="Script" uid="uid://dub3bbi0m1wet" path="res://scripts/game/map_transition.gd" id="1_map_transition"]
+[ext_resource type="Script" uid="uid://bw6hpj8eqcbgl" path="res://scripts/game/map_bounds_rect.gd" id="2_map_bounds_rect"]
 
 [sub_resource type="RectangleShape2D" id="RectangleShape2D_edge_warp"]
 size = Vector2(72, 220)
 
-[node name="Map2" type="Node2D"]
+[node name="Map2" type="Node2D" unique_id=607702366]
 
-[node name="Ground" type="ColorRect" parent="."]
+[node name="Ground" type="ColorRect" parent="." unique_id=1428779968]
 z_index = -4096
-offset_left = -700.0
-offset_top = -450.0
-offset_right = 1300.0
-offset_bottom = 950.0
-color = Color(0.24, 0.2, 0.16, 1)
+offset_right = 2000.0
+offset_bottom = 1400.0
+mouse_filter = 2
+color = Color(0, 0, 0, 0)
+script = ExtResource("2_map_bounds_rect")
 
-[node name="Title" type="Label" parent="."]
+[node name="Title" type="Label" parent="." unique_id=730024520]
+visible = false
 z_index = -4095
 offset_left = -640.0
 offset_top = -405.0
@@ -25,19 +27,18 @@ theme_override_colors/font_color = Color(0.92, 0.82, 0.56, 1)
 theme_override_font_sizes/font_size = 26
 text = "Map 2"
 
-[node name="SpawnFromMap1" type="Marker2D" parent="."]
-position = Vector2(-664, 300)
+[node name="SpawnFromMap1" type="Marker2D" parent="." unique_id=59089926]
+position = Vector2(61, 631)
 
-[node name="WarpToMap1" type="Area2D" parent="."]
-position = Vector2(-664, 300)
+[node name="WarpToMap1" type="Area2D" parent="." unique_id=1869335058]
+position = Vector2(61, 631)
 collision_layer = 0
 script = ExtResource("1_map_transition")
 target_map_scene = "res://scenes/world/maps/map_1.tscn"
 target_spawn_name = "SpawnFromMap2"
 display_name = "Map 1"
-visual_size = Vector2(72, 220)
 visual_color = Color(1, 0.72, 0.25, 0.38)
 
-[node name="CollisionShape2D" type="CollisionShape2D" parent="WarpToMap1"]
+[node name="CollisionShape2D" type="CollisionShape2D" parent="WarpToMap1" unique_id=1338185245]
 shape = SubResource("RectangleShape2D_edge_warp")
 debug_color = Color(1, 0.72, 0.25, 0.42)

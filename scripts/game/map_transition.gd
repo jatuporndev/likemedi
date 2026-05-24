@@ -14,6 +14,7 @@ var _label: Label
 
 
 func _ready() -> void:
+	add_to_group("warp_points")
 	body_entered.connect(_on_body_entered)
 	_build_label()
 

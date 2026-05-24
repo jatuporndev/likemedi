@@ -4,7 +4,7 @@ const ENEMY_SCENE := preload("res://scenes/enemies/enemy_bot.tscn")
 const MAP_CONFIG_PATH := "res://config/maps.json"
 const DEFAULT_MAP_SCENE := "res://scenes/world/maps/map_1.tscn"
 const RANDOM_SPAWN_ATTEMPTS := 32
-const FALLBACK_MAP_RECT := Rect2(Vector2(-700, -450), Vector2(2000, 1400))
+const FALLBACK_MAP_RECT := Rect2(Vector2(-700, -450), Vector2(6000, 2400))
 const MAP_TRANSITION_LOCK_MSEC := 650
 const MAP_TRANSITION_LOCKED_UNTIL_META := "map_transition_locked_until_msec"
 const PLAYER_SPAWN_POINT_NODE_NAME := "PlayerSpawnPoint"
@@ -287,6 +287,10 @@ func _get_current_map_rect() -> Rect2:
 		return FALLBACK_MAP_RECT
 
 	return Rect2(ground.global_position, ground.size)
+
+
+func get_current_map_rect() -> Rect2:
+	return _get_current_map_rect()
 
 
 func _is_spawn_position_walkable(candidate: Vector2) -> bool:

@@ -32,6 +32,10 @@ Use one `TileMapLayer` per purpose:
 - `Details`: edges, flowers, shadows, road decorations.
 - `Blocked`: walls, cliffs, water collision.
 
+For draw order (so tiles never render over the player at the top edge):
+
+- Keep your floor TileMapLayers at a very low `z_index` (example: `-4096`) and set `z_as_relative = false`.
+
 ## Add Collision To Blocked Tiles
 
 1. Select the `TileSet`.
@@ -95,3 +99,15 @@ Fields:
 - `respawn_seconds`: seconds to wait before replacing a dead enemy.
 
 Enemies spawn randomly inside the loaded map's `Ground` rectangle. If the random point overlaps a physics body or area, the spawner tries another point. This means blocked TileMap collision can be used to keep enemies off walls, water, cliffs, and warp points.
+
+## Map Bounds (Crop / Spawn / Minimap Frame)
+
+Each map has a `Ground` `ColorRect` that defines the map bounds in world-space (used for enemy random spawn, and can be reused for minimap framing).
+
+`Ground` uses `res://scripts/game/map_bounds_rect.gd` which:
+
+- Shows an outline in the editor so you can see the crop frame while painting TileMaps.
+- By default, **does not** override your `Ground` size/position — each map can set its own bounds by dragging the `ColorRect`.
+- If you want to force all maps to one shared size, enable `enforce_project_defaults` on `Ground`.
+- Draws an outline in the editor so you can see the crop frame while painting TileMaps.
+- Hides itself in-game by default (set `show_in_game` if you want to visualize it at runtime).

@@ -6,6 +6,15 @@ static var _card_definitions: Dictionary = {}
 static var _is_loaded := false
 
 
+static func get_all_skill_names() -> Array[String]:
+	_ensure_loaded()
+	var names: Array[String] = []
+	for skill_name in _card_definitions.keys():
+		names.append(str(skill_name))
+	names.sort()
+	return names
+
+
 static func get_definition(skill_name: String) -> Dictionary:
 	_ensure_loaded()
 	if _card_definitions.has(skill_name):
@@ -49,6 +58,7 @@ static func _normalize_definition(skill_name: String, raw_definition: Dictionary
 		"type": str(raw_definition.get("type", fallback["type"])),
 		"cost": int(raw_definition.get("cost", fallback["cost"])),
 		"cast_time": float(raw_definition.get("cast_time", fallback["cast_time"])),
+		"self_target": bool(raw_definition.get("self_target", false)),
 		"damage": int(raw_definition.get("damage", fallback["damage"])),
 		"heal": int(raw_definition.get("heal", fallback["heal"])),
 		"range": float(raw_definition.get("range", fallback["range"])),

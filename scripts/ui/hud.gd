@@ -5,6 +5,8 @@ const SKILL_DECK := preload("res://scripts/game/skill_deck.gd")
 const SKILL_STAMINA := preload("res://scripts/game/skill_stamina.gd")
 const PLAYER_TARGET_PREVIEW := preload("res://scripts/ui/player_target_preview.gd")
 const SKILL_CARD_SCENE := preload("res://scenes/ui/skill_card_view.tscn")
+const MINIMAP := preload("res://scripts/ui/minimap.gd")
+const DECK_BUILDER_SCENE := preload("res://scenes/ui/deck_builder.tscn")
 
 var _chat_log: RichTextLabel
 var _chat_input: LineEdit
@@ -31,6 +33,10 @@ var _debuff_status_icon: Label
 var _debuff_status_tooltip: PanelContainer
 var _debuff_status_tooltip_label: Label
 var _pause_overlay: Control
+var _deck_builder_overlay: Control
+var _deck_builder_button: Button
+var _deck_builder_dirty := false
+var _minimap_panel: PanelContainer
 var _dragged_skill_card: PanelContainer
 var _release_hint: Label
 var _card_status_label: Label
@@ -99,6 +105,7 @@ const BUFF_STATUS_TOOLTIP_OFFSET := Vector2(14.0, 14.0)
 var _hovered_skill_card: PanelContainer
 var _is_dealing_hand := false
 var _hovered_heal_target_peer_id := -1
+var _hovered_skill_target_in_range := true
 var _is_hovering_buff_status := false
 var _is_hovering_debuff_status := false
 
@@ -176,7 +183,9 @@ func _build_ui() -> void:
 	_fps_label.add_theme_font_size_override("font_size", 10)
 	add_child(_fps_label)
 
+	_build_minimap_ui()
 	_build_player_status_card()
+	_build_deck_builder_button()
 	_build_buff_status_ui()
 	_build_debuff_status_ui()
 
@@ -227,6 +236,60 @@ func _build_ui() -> void:
 	_build_deck_ui()
 	_build_skill_card_ui()
 	_build_pause_menu()
+
+
+func _build_deck_builder_button() -> void:
+	_deck_builder_button = Button.new()
+	_deck_builder_button.text = "Deck"
+	_deck_builder_button.tooltip_text = "Open Deck Builder"
+	_deck_builder_button.focus_mode = Control.FOCUS_NONE
+	_deck_builder_button.anchor_left = 0.0
+	_deck_builder_button.anchor_top = 0.0
+	_deck_builder_button.anchor_right = 0.0
+	_deck_builder_button.anchor_bottom = 0.0
+	_deck_builder_button.offset_left = 12.0
+	_deck_builder_button.offset_top = 112.0
+	_deck_builder_button.offset_right = 92.0
+	_deck_builder_button.offset_bottom = 148.0
+	_deck_builder_button.pressed.connect(_toggle_deck_builder)
+	_deck_builder_button.add_theme_font_size_override("font_size", 13)
+	_deck_builder_button.add_theme_color_override("font_color", Color(0.95, 0.86, 0.62))
+	_deck_builder_button.add_theme_stylebox_override(
+		"normal",
+		_create_pause_button_style(Color(0.18, 0.12, 0.07, 0.98), Color(0.54, 0.36, 0.16))
+	)
+	_deck_builder_button.add_theme_stylebox_override(
+		"hover",
+		_create_pause_button_style(Color(0.24, 0.16, 0.08, 0.98), Color(0.90, 0.67, 0.30))
+	)
+	_deck_builder_button.add_theme_stylebox_override(
+		"pressed",
+		_create_pause_button_style(Color(0.12, 0.09, 0.07, 0.98), Color(0.74, 0.50, 0.22))
+	)
+	add_child(_deck_builder_button)
+
+
+func _build_minimap_ui() -> void:
+	_minimap_panel = PanelContainer.new()
+	_minimap_panel.anchor_left = 1.0
+	_minimap_panel.anchor_top = 0.0
+	_minimap_panel.anchor_right = 1.0
+	_minimap_panel.anchor_bottom = 0.0
+	_minimap_panel.offset_left = -172.0
+	_minimap_panel.offset_top = 38.0
+	_minimap_panel.offset_right = -12.0
+	_minimap_panel.offset_bottom = 198.0
+	_minimap_panel.add_theme_stylebox_override("panel", _create_status_panel_style())
+	add_child(_minimap_panel)
+
+	var minimap := MINIMAP.new()
+	minimap.world_path = NodePath("../../..")
+	minimap.set_anchors_preset(Control.PRESET_FULL_RECT)
+	minimap.offset_left = 0.0
+	minimap.offset_top = 0.0
+	minimap.offset_right = 0.0
+	minimap.offset_bottom = 0.0
+	_minimap_panel.add_child(minimap)
 
 
 func _submit_chat(message: String) -> void:
@@ -772,9 +835,9 @@ func _build_pause_menu() -> void:
 	panel.anchor_right = 0.5
 	panel.anchor_bottom = 0.5
 	panel.offset_left = -110.0
-	panel.offset_top = -124.0
+	panel.offset_top = -148.0
 	panel.offset_right = 110.0
-	panel.offset_bottom = 124.0
+	panel.offset_bottom = 148.0
 	panel.mouse_filter = Control.MOUSE_FILTER_STOP
 	panel.add_theme_stylebox_override("panel", _create_pause_panel_style())
 	_pause_overlay.add_child(panel)
@@ -818,6 +881,10 @@ func _build_pause_menu() -> void:
 	var resume_button := _create_pause_button("Resume")
 	resume_button.pressed.connect(_hide_pause_menu)
 	layout.add_child(resume_button)
+
+	var deck_button := _create_pause_button("Deck Builder")
+	deck_button.pressed.connect(_on_deck_builder_pressed)
+	layout.add_child(deck_button)
 
 	var settings_button := _create_pause_button("Settings")
 	layout.add_child(settings_button)
@@ -900,6 +967,67 @@ func _hide_pause_menu() -> void:
 	if _pause_overlay == null:
 		return
 	_pause_overlay.visible = false
+
+
+func _on_deck_builder_pressed() -> void:
+	_hide_pause_menu()
+	_show_deck_builder()
+
+
+func _toggle_deck_builder() -> void:
+	if _deck_builder_overlay != null:
+		_hide_deck_builder()
+	else:
+		_show_deck_builder()
+
+
+func _show_deck_builder() -> void:
+	if _deck_builder_overlay != null:
+		_deck_builder_overlay.visible = true
+		return
+
+	_deck_builder_overlay = Control.new()
+	_deck_builder_overlay.mouse_filter = Control.MOUSE_FILTER_STOP
+	_deck_builder_overlay.set_anchors_preset(Control.PRESET_FULL_RECT)
+	_deck_builder_overlay.z_index = 120
+	add_child(_deck_builder_overlay)
+
+	var view := DECK_BUILDER_SCENE.instantiate()
+	if view != null:
+		_deck_builder_overlay.add_child(view)
+		if view.has_signal("closed"):
+			view.connect("closed", Callable(self, "_hide_deck_builder"))
+		if view.has_signal("deck_changed"):
+			view.connect("deck_changed", Callable(self, "_on_deck_builder_changed"))
+
+
+func _hide_deck_builder() -> void:
+	if _deck_builder_overlay == null:
+		return
+	_deck_builder_overlay.queue_free()
+	_deck_builder_overlay = null
+	if _deck_builder_dirty:
+		_deck_builder_dirty = false
+		_reload_skill_deck_from_saved_deck()
+
+
+func _on_deck_builder_changed() -> void:
+	_deck_builder_dirty = true
+
+
+func _reload_skill_deck_from_saved_deck() -> void:
+	if _is_dragging_skill_card:
+		_cancel_skill_card_drag()
+
+	for card in _hand_cards:
+		if is_instance_valid(card):
+			card.queue_free()
+	_hand_cards.clear()
+	_hovered_skill_card = null
+	_skill_deck.setup_default_deck()
+	_draw_full_hand()
+	_reset_skill_card_positions()
+	_update_deck_ui()
 
 
 func _get_local_player_name() -> String:
@@ -1461,6 +1589,7 @@ func _draw_card() -> void:
 	)
 	card.set_meta("stamina_cost", int(definition["cost"]))
 	card.set_meta("skill_type", str(definition["type"]))
+	card.set_meta("self_target", bool(definition.get("self_target", false)))
 	card.set_meta("damage", int(definition["damage"]))
 	card.set_meta("heal", int(definition["heal"]))
 	card.set_meta("range", float(definition["range"]))
@@ -1662,6 +1791,8 @@ func _finish_skill_card_drag(_mouse_position: Vector2) -> void:
 	if _skill_stamina.can_spend(stamina_cost):
 		if _requires_player_target_card(_dragged_skill_card) and _hovered_heal_target_peer_id == -1:
 			_release_hint.text = "Select target"
+		elif _requires_player_target_card(_dragged_skill_card) and not _hovered_skill_target_in_range:
+			_release_hint.text = "Out of range"
 		else:
 			was_used = _request_local_skill(_dragged_skill, _hovered_heal_target_peer_id)
 		if was_used:
@@ -1681,6 +1812,7 @@ func _finish_skill_card_drag(_mouse_position: Vector2) -> void:
 	_dragged_skill_card = null
 	_dragged_skill = ""
 	_hovered_heal_target_peer_id = -1
+	_hovered_skill_target_in_range = true
 	if was_used and used_card != null:
 		_discard_card(used_card)
 	if _hand_cards.is_empty():
@@ -1696,6 +1828,7 @@ func _cancel_skill_card_drag() -> void:
 	_dragged_skill_card = null
 	_dragged_skill = ""
 	_hovered_heal_target_peer_id = -1
+	_hovered_skill_target_in_range = true
 	_release_hint.visible = false
 	_release_hint.text = "Release to use"
 	_drag_line.visible = false
@@ -1769,9 +1902,9 @@ func _update_skill_preview(card: PanelContainer, mouse_position: Vector2) -> Vec
 
 	var attack_range := float(card.get_meta("range", 0.0))
 	var skill_type := str(card.get_meta("skill_type", "attack"))
-	if _is_player_target_skill_type(skill_type):
+	if _is_player_target_skill_type(skill_type) and not _is_self_target_card(card):
 		_set_local_player_skill_aiming(false)
-		return _update_player_target_preview(mouse_position, skill_type)
+		return _update_player_target_preview(mouse_position, skill_type, attack_range)
 	if attack_range <= 0.0:
 		_set_skill_preview_visible(false)
 		_set_local_player_skill_aiming(false)
@@ -2016,7 +2149,8 @@ func _set_skill_preview_visible(is_visible: bool) -> void:
 
 func _update_player_target_preview(
 	mouse_position: Vector2,
-	skill_type: String
+	skill_type: String,
+	cast_range: float
 ) -> Vector2:
 	for preview_rect in _skill_preview_rects:
 		preview_rect.visible = false
@@ -2031,10 +2165,18 @@ func _update_player_target_preview(
 	var target := _find_skill_target_at_screen_position(mouse_position, skill_type)
 	if target == null:
 		_hovered_heal_target_peer_id = -1
+		_hovered_skill_target_in_range = true
 		_player_target_preview.hide_floor()
 		return mouse_position
 
 	_hovered_heal_target_peer_id = _get_skill_target_id(target)
+	_hovered_skill_target_in_range = true
+	if cast_range > 0.0:
+		var local_player := _get_local_player_node()
+		if local_player != null:
+			_hovered_skill_target_in_range = (
+				local_player.global_position.distance_to(target.global_position) <= cast_range
+			)
 	var center := _get_player_floor_target_world_center(target)
 	_player_target_preview.update_floor(center, skill_type)
 	return _get_player_floor_target_center(target)
@@ -2436,7 +2578,13 @@ func _requires_player_target_card(card: PanelContainer) -> bool:
 	if card == null:
 		return false
 
+	if _is_self_target_card(card):
+		return false
 	return _is_player_target_skill_type(str(card.get_meta("skill_type", "attack")))
+
+
+func _is_self_target_card(card: PanelContainer) -> bool:
+	return card != null and bool(card.get_meta("self_target", false))
 
 
 func _is_player_target_skill_type(skill_type: String) -> bool:

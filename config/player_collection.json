@@ -1,0 +1,12 @@
+{
+	"default": {
+		"strike": 10,
+		"fireball": 6,
+		"swift_raid": 6,
+		"heal": 5,
+		"fast_boi": 3,
+		"wait_boi": 3,
+		"jump": 5
+	}
+}
+

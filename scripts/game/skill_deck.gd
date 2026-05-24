@@ -1,6 +1,9 @@
 extends RefCounted
 
 const PLAYER_DECKS_CONFIG_PATH := "res://config/player_decks.json"
+const PLAYER_DECKS_USER_PATH := "user://player_decks.json"
+const SKILL_CARD_DATABASE := preload("res://scripts/game/skill_card_database.gd")
+const MAX_DECK_CARDS := 25
 const MAX_HAND_SIZE := 5
 
 var draw_pile: Array[String] = []
@@ -77,16 +80,19 @@ func discard_pile_count() -> int:
 
 
 func _load_deck(deck_id: String) -> Array[String]:
-	if not FileAccess.file_exists(PLAYER_DECKS_CONFIG_PATH):
-		push_warning("Player deck config not found: %s" % PLAYER_DECKS_CONFIG_PATH)
+	var config_path := PLAYER_DECKS_CONFIG_PATH
+	if FileAccess.file_exists(PLAYER_DECKS_USER_PATH):
+		config_path = PLAYER_DECKS_USER_PATH
+	elif not FileAccess.file_exists(config_path):
+		push_warning("Player deck config not found: %s" % config_path)
 		return []
 
-	var parsed = JSON.parse_string(FileAccess.get_file_as_string(PLAYER_DECKS_CONFIG_PATH))
+	var parsed = JSON.parse_string(FileAccess.get_file_as_string(config_path))
 	if not (parsed is Dictionary):
-		push_warning("Player deck config is not a dictionary: %s" % PLAYER_DECKS_CONFIG_PATH)
+		push_warning("Player deck config is not a dictionary: %s" % config_path)
 		return []
 	if not parsed.has(deck_id):
-		push_warning("Deck id '%s' not found in %s" % [deck_id, PLAYER_DECKS_CONFIG_PATH])
+		push_warning("Deck id '%s' not found in %s" % [deck_id, config_path])
 		return []
 
 	var raw_deck = parsed[deck_id]
@@ -94,7 +100,12 @@ func _load_deck(deck_id: String) -> Array[String]:
 		push_warning("Deck id '%s' is not an array." % deck_id)
 		return []
 
+	var valid_skill_names := SKILL_CARD_DATABASE.get_all_skill_names()
 	var deck: Array[String] = []
 	for skill_name in raw_deck:
-		deck.append(str(skill_name))
+		var normalized_skill_name := str(skill_name)
+		if valid_skill_names.has(normalized_skill_name):
+			deck.append(normalized_skill_name)
+	if deck.size() > MAX_DECK_CARDS:
+		deck = deck.slice(0, MAX_DECK_CARDS)
 	return deck
