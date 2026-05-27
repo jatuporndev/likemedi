@@ -223,7 +223,7 @@ func _build_ui() -> void:
 	chat_layout.add_child(_chat_log)
 
 	_chat_input = LineEdit.new()
-	_chat_input.placeholder_text = "Chat"
+	_chat_input.placeholder_text = "Speak unto the realm..."
 	_chat_input.add_theme_stylebox_override("normal", _create_chat_input_style(false))
 	_chat_input.add_theme_stylebox_override("focus", _create_chat_input_style(true))
 	_chat_input.add_theme_color_override("font_color", Color(0.96, 0.90, 0.76))
@@ -240,17 +240,17 @@ func _build_ui() -> void:
 
 func _build_deck_builder_button() -> void:
 	_deck_builder_button = Button.new()
-	_deck_builder_button.text = "Deck"
-	_deck_builder_button.tooltip_text = "Open Deck Builder"
+	_deck_builder_button.text = "Grimoire"
+	_deck_builder_button.tooltip_text = "Open Grimoire"
 	_deck_builder_button.focus_mode = Control.FOCUS_NONE
 	_deck_builder_button.anchor_left = 0.0
 	_deck_builder_button.anchor_top = 0.0
 	_deck_builder_button.anchor_right = 0.0
 	_deck_builder_button.anchor_bottom = 0.0
 	_deck_builder_button.offset_left = 12.0
-	_deck_builder_button.offset_top = 112.0
-	_deck_builder_button.offset_right = 92.0
-	_deck_builder_button.offset_bottom = 148.0
+	_deck_builder_button.offset_top = 122.0
+	_deck_builder_button.offset_right = 112.0
+	_deck_builder_button.offset_bottom = 156.0
 	_deck_builder_button.pressed.connect(_toggle_deck_builder)
 	_deck_builder_button.add_theme_font_size_override("font_size", 13)
 	_deck_builder_button.add_theme_color_override("font_color", Color(0.95, 0.86, 0.62))
@@ -314,16 +314,19 @@ func _copy_room_code() -> void:
 
 func _create_chat_panel_style() -> StyleBoxFlat:
 	var panel_style := StyleBoxFlat.new()
-	panel_style.bg_color = Color(0.07, 0.055, 0.04, 0.92)
-	panel_style.border_color = Color(0.68, 0.44, 0.18, 0.95)
-	panel_style.border_width_left = 2
-	panel_style.border_width_top = 2
-	panel_style.border_width_right = 2
-	panel_style.border_width_bottom = 2
-	panel_style.corner_radius_top_left = 7
-	panel_style.corner_radius_top_right = 7
-	panel_style.corner_radius_bottom_left = 7
-	panel_style.corner_radius_bottom_right = 7
+	panel_style.bg_color = Color(0.045, 0.034, 0.024, 0.94)
+	panel_style.border_color = Color(0.78, 0.54, 0.22, 1.0)
+	panel_style.border_width_left = 3
+	panel_style.border_width_top = 3
+	panel_style.border_width_right = 3
+	panel_style.border_width_bottom = 3
+	panel_style.corner_radius_top_left = 3
+	panel_style.corner_radius_top_right = 3
+	panel_style.corner_radius_bottom_left = 3
+	panel_style.corner_radius_bottom_right = 3
+	panel_style.shadow_color = Color(0.0, 0.0, 0.0, 0.65)
+	panel_style.shadow_size = 5
+	panel_style.shadow_offset = Vector2(2.0, 3.0)
 	return panel_style
 
 
@@ -373,8 +376,8 @@ func _build_player_status_card() -> void:
 	status_panel.anchor_bottom = 0.0
 	status_panel.offset_left = 12.0
 	status_panel.offset_top = 12.0
-	status_panel.offset_right = 230.0
-	status_panel.offset_bottom = 104.0
+	status_panel.offset_right = 238.0
+	status_panel.offset_bottom = 112.0
 	status_panel.add_theme_stylebox_override("panel", _create_status_panel_style())
 	add_child(status_panel)
 
@@ -390,11 +393,14 @@ func _build_player_status_card() -> void:
 	status_margin.add_child(status_layout)
 
 	_player_name_label = Label.new()
-	_player_name_label.text = _get_local_player_name()
+	_player_name_label.text = "%s %s" % ["⚔", _get_local_player_name()]
 	_player_name_label.clip_text = true
 	_player_name_label.text_overrun_behavior = TextServer.OVERRUN_TRIM_ELLIPSIS
-	_player_name_label.add_theme_font_size_override("font_size", 15)
-	_player_name_label.add_theme_color_override("font_color", Color.WHITE)
+	_player_name_label.add_theme_font_size_override("font_size", 16)
+	_player_name_label.add_theme_color_override("font_color", Color(1.0, 0.88, 0.58))
+	_player_name_label.add_theme_color_override("font_shadow_color", Color(0.02, 0.015, 0.01, 0.95))
+	_player_name_label.add_theme_constant_override("shadow_offset_x", 1)
+	_player_name_label.add_theme_constant_override("shadow_offset_y", 1)
 	status_layout.add_child(_player_name_label)
 
 	var health_row := HBoxContainer.new()
@@ -402,16 +408,20 @@ func _build_player_status_card() -> void:
 	status_layout.add_child(health_row)
 
 	var health_label := Label.new()
-	health_label.custom_minimum_size = Vector2(28.0, 0.0)
-	health_label.text = "HP"
-	health_label.add_theme_font_size_override("font_size", 11)
-	health_label.add_theme_color_override("font_color", Color.WHITE)
+	health_label.custom_minimum_size = Vector2(20.0, 0.0)
+	health_label.text = "❤"
+	health_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	health_label.add_theme_font_size_override("font_size", 14)
+	health_label.add_theme_color_override("font_color", Color(0.95, 0.30, 0.22))
+	health_label.add_theme_color_override("font_shadow_color", Color(0.02, 0.0, 0.0, 0.9))
+	health_label.add_theme_constant_override("shadow_offset_x", 1)
+	health_label.add_theme_constant_override("shadow_offset_y", 1)
 	health_row.add_child(health_label)
 
 	_health_bar = _create_status_progress_bar(
-		Color(0.12, 0.04, 0.035, 1.0),
-		Color(0.74, 0.16, 0.10, 1.0),
-		10.0
+		Color(0.10, 0.025, 0.022, 1.0),
+		Color(0.82, 0.14, 0.09, 1.0),
+		12.0
 	)
 	_health_bar.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	health_row.add_child(_health_bar)
@@ -428,16 +438,20 @@ func _build_player_status_card() -> void:
 	status_layout.add_child(stamina_row)
 
 	var stamina_label := Label.new()
-	stamina_label.custom_minimum_size = Vector2(28.0, 0.0)
-	stamina_label.text = "SP"
-	stamina_label.add_theme_font_size_override("font_size", 11)
-	stamina_label.add_theme_color_override("font_color", Color.WHITE)
+	stamina_label.custom_minimum_size = Vector2(20.0, 0.0)
+	stamina_label.text = "✦"
+	stamina_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	stamina_label.add_theme_font_size_override("font_size", 14)
+	stamina_label.add_theme_color_override("font_color", Color(0.62, 0.86, 1.0))
+	stamina_label.add_theme_color_override("font_shadow_color", Color(0.0, 0.02, 0.05, 0.9))
+	stamina_label.add_theme_constant_override("shadow_offset_x", 1)
+	stamina_label.add_theme_constant_override("shadow_offset_y", 1)
 	stamina_row.add_child(stamina_label)
 
 	_stamina_bar = _create_status_progress_bar(
-		Color(0.05, 0.10, 0.13, 1.0),
-		Color(0.21, 0.66, 0.86, 1.0),
-		10.0
+		Color(0.035, 0.08, 0.11, 1.0),
+		Color(0.26, 0.70, 0.92, 1.0),
+		12.0
 	)
 	_stamina_bar.max_value = SKILL_STAMINA.MAX_STAMINA
 	_stamina_bar.size_flags_horizontal = Control.SIZE_EXPAND_FILL
@@ -456,16 +470,19 @@ func _build_player_status_card() -> void:
 
 func _create_status_panel_style() -> StyleBoxFlat:
 	var panel_style := StyleBoxFlat.new()
-	panel_style.bg_color = Color(0.07, 0.055, 0.04, 0.96)
-	panel_style.border_color = Color(0.68, 0.44, 0.18, 0.95)
-	panel_style.border_width_left = 2
-	panel_style.border_width_top = 2
-	panel_style.border_width_right = 2
-	panel_style.border_width_bottom = 2
-	panel_style.corner_radius_top_left = 7
-	panel_style.corner_radius_top_right = 7
-	panel_style.corner_radius_bottom_left = 7
-	panel_style.corner_radius_bottom_right = 7
+	panel_style.bg_color = Color(0.045, 0.034, 0.024, 0.97)
+	panel_style.border_color = Color(0.78, 0.54, 0.22, 1.0)
+	panel_style.border_width_left = 3
+	panel_style.border_width_top = 3
+	panel_style.border_width_right = 3
+	panel_style.border_width_bottom = 3
+	panel_style.corner_radius_top_left = 3
+	panel_style.corner_radius_top_right = 3
+	panel_style.corner_radius_bottom_left = 3
+	panel_style.corner_radius_bottom_right = 3
+	panel_style.shadow_color = Color(0.0, 0.0, 0.0, 0.72)
+	panel_style.shadow_size = 5
+	panel_style.shadow_offset = Vector2(2.0, 3.0)
 	return panel_style
 
 
@@ -493,7 +510,7 @@ func _create_status_progress_bar(background_color: Color, fill_color: Color, hei
 
 func _update_player_status_ui() -> void:
 	if _player_name_label != null:
-		_player_name_label.text = _get_local_player_name()
+		_player_name_label.text = "%s %s" % ["⚔", _get_local_player_name()]
 	if _health_bar == null or _health_value_label == null:
 		return
 
@@ -539,7 +556,7 @@ func _build_buff_status_ui() -> void:
 	_buff_status_panel.add_child(margin)
 
 	_buff_status_icon = Label.new()
-	_buff_status_icon.text = ">>"
+	_buff_status_icon.text = "✦"
 	_buff_status_icon.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	_buff_status_icon.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
 	_buff_status_icon.size_flags_horizontal = Control.SIZE_EXPAND_FILL
@@ -693,7 +710,7 @@ func _build_debuff_status_ui() -> void:
 	_debuff_status_panel.add_child(margin)
 
 	_debuff_status_icon = Label.new()
-	_debuff_status_icon.text = "<<"
+	_debuff_status_icon.text = "☠"
 	_debuff_status_icon.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	_debuff_status_icon.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
 	_debuff_status_icon.size_flags_horizontal = Control.SIZE_EXPAND_FILL
@@ -854,10 +871,13 @@ func _build_pause_menu() -> void:
 	margin.add_child(layout)
 
 	var title := Label.new()
-	title.text = "Paused"
+	title.text = "✦ ── Halted ── ✦"
 	title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	title.add_theme_color_override("font_color", Color(1.0, 0.86, 0.52))
-	title.add_theme_font_size_override("font_size", 20)
+	title.add_theme_color_override("font_shadow_color", Color(0.02, 0.015, 0.01, 0.95))
+	title.add_theme_constant_override("shadow_offset_x", 1)
+	title.add_theme_constant_override("shadow_offset_y", 2)
+	title.add_theme_font_size_override("font_size", 22)
 	layout.add_child(title)
 
 	_host_label = Label.new()
@@ -878,34 +898,37 @@ func _build_pause_menu() -> void:
 		copy_button.pressed.connect(_copy_room_code)
 		layout.add_child(copy_button)
 
-	var resume_button := _create_pause_button("Resume")
+	var resume_button := _create_pause_button("Return to Battle")
 	resume_button.pressed.connect(_hide_pause_menu)
 	layout.add_child(resume_button)
 
-	var deck_button := _create_pause_button("Deck Builder")
+	var deck_button := _create_pause_button("Grimoire")
 	deck_button.pressed.connect(_on_deck_builder_pressed)
 	layout.add_child(deck_button)
 
 	var settings_button := _create_pause_button("Settings")
 	layout.add_child(settings_button)
 
-	var leave_button := _create_pause_button("Leave")
+	var leave_button := _create_pause_button("Forsake the Realm")
 	leave_button.pressed.connect(Callable(NetworkManager, "leave_game"))
 	layout.add_child(leave_button)
 
 
 func _create_pause_panel_style() -> StyleBoxFlat:
 	var panel_style := StyleBoxFlat.new()
-	panel_style.bg_color = Color(0.10, 0.075, 0.055, 0.97)
-	panel_style.border_color = Color(0.90, 0.67, 0.30)
-	panel_style.border_width_left = 2
-	panel_style.border_width_top = 2
-	panel_style.border_width_right = 2
-	panel_style.border_width_bottom = 2
-	panel_style.corner_radius_top_left = 7
-	panel_style.corner_radius_top_right = 7
-	panel_style.corner_radius_bottom_left = 7
-	panel_style.corner_radius_bottom_right = 7
+	panel_style.bg_color = Color(0.06, 0.045, 0.032, 0.98)
+	panel_style.border_color = Color(0.92, 0.70, 0.32, 1.0)
+	panel_style.border_width_left = 4
+	panel_style.border_width_top = 4
+	panel_style.border_width_right = 4
+	panel_style.border_width_bottom = 4
+	panel_style.corner_radius_top_left = 3
+	panel_style.corner_radius_top_right = 3
+	panel_style.corner_radius_bottom_left = 3
+	panel_style.corner_radius_bottom_right = 3
+	panel_style.shadow_color = Color(0.0, 0.0, 0.0, 0.78)
+	panel_style.shadow_size = 8
+	panel_style.shadow_offset = Vector2(4.0, 6.0)
 	return panel_style
 
 
@@ -935,14 +958,17 @@ func _create_pause_button_style(bg_color: Color, border_color: Color) -> StyleBo
 	var button_style := StyleBoxFlat.new()
 	button_style.bg_color = bg_color
 	button_style.border_color = border_color
-	button_style.border_width_left = 1
-	button_style.border_width_top = 1
-	button_style.border_width_right = 1
-	button_style.border_width_bottom = 1
-	button_style.corner_radius_top_left = 5
-	button_style.corner_radius_top_right = 5
-	button_style.corner_radius_bottom_left = 5
-	button_style.corner_radius_bottom_right = 5
+	button_style.border_width_left = 2
+	button_style.border_width_top = 2
+	button_style.border_width_right = 2
+	button_style.border_width_bottom = 2
+	button_style.corner_radius_top_left = 2
+	button_style.corner_radius_top_right = 2
+	button_style.corner_radius_bottom_left = 2
+	button_style.corner_radius_bottom_right = 2
+	button_style.shadow_color = Color(0.0, 0.0, 0.0, 0.55)
+	button_style.shadow_size = 2
+	button_style.shadow_offset = Vector2(1.0, 2.0)
 	return button_style
 
 
@@ -1068,10 +1094,10 @@ func _build_deck_ui() -> void:
 	stacks.add_theme_constant_override("separation", 5)
 	deck_layout.add_child(stacks)
 
-	_draw_deck_label = _create_deck_stack_label("Draw Pile", 0, false)
+	_draw_deck_label = _create_deck_stack_label("Tome", 0, false)
 	stacks.add_child(_draw_deck_label)
 
-	_discard_deck_label = _create_deck_stack_label("Discard", 0, true)
+	_discard_deck_label = _create_deck_stack_label("Pyre", 0, true)
 	stacks.add_child(_discard_deck_label)
 
 	_update_end_hand_button()
@@ -1079,16 +1105,19 @@ func _build_deck_ui() -> void:
 
 func _create_deck_panel_style() -> StyleBoxFlat:
 	var panel_style := StyleBoxFlat.new()
-	panel_style.bg_color = Color(0.08, 0.065, 0.05, 0.96)
-	panel_style.border_color = Color(0.58, 0.38, 0.16, 0.95)
-	panel_style.border_width_left = 2
-	panel_style.border_width_top = 2
-	panel_style.border_width_right = 2
-	panel_style.border_width_bottom = 2
-	panel_style.corner_radius_top_left = 7
-	panel_style.corner_radius_top_right = 7
-	panel_style.corner_radius_bottom_left = 7
-	panel_style.corner_radius_bottom_right = 7
+	panel_style.bg_color = Color(0.05, 0.038, 0.026, 0.97)
+	panel_style.border_color = Color(0.78, 0.54, 0.22, 1.0)
+	panel_style.border_width_left = 3
+	panel_style.border_width_top = 3
+	panel_style.border_width_right = 3
+	panel_style.border_width_bottom = 3
+	panel_style.corner_radius_top_left = 3
+	panel_style.corner_radius_top_right = 3
+	panel_style.corner_radius_bottom_left = 3
+	panel_style.corner_radius_bottom_right = 3
+	panel_style.shadow_color = Color(0.0, 0.0, 0.0, 0.72)
+	panel_style.shadow_size = 6
+	panel_style.shadow_offset = Vector2(3.0, 4.0)
 	return panel_style
 
 
@@ -1144,7 +1173,7 @@ func _create_end_hand_button() -> Control:
 	text_label.anchor_bottom = 1.0
 	text_label.offset_left = 19.0
 	text_label.offset_right = -5.0
-	text_label.text = "End\nHand"
+	text_label.text = "End\nTurn"
 	text_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	text_label.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
 	text_label.mouse_filter = Control.MOUSE_FILTER_IGNORE
@@ -1670,13 +1699,13 @@ func _on_end_hand_pressed() -> void:
 func _update_deck_ui() -> void:
 	if _draw_deck_label != null:
 		if _skill_deck.is_shuffling:
-			_draw_deck_label.text = "Draw Pile\nMix"
+			_draw_deck_label.text = "Tome\nMix"
 		elif _skill_deck.is_waiting_to_draw_after_shuffle:
-			_draw_deck_label.text = "Draw Pile\n..."
+			_draw_deck_label.text = "Tome\n..."
 		else:
-			_draw_deck_label.text = "Draw Pile\n%d" % _skill_deck.draw_pile_count()
+			_draw_deck_label.text = "Tome\n%d" % _skill_deck.draw_pile_count()
 	if _discard_deck_label != null:
-		_discard_deck_label.text = "Discard\n%d" % _skill_deck.discard_pile_count()
+		_discard_deck_label.text = "Pyre\n%d" % _skill_deck.discard_pile_count()
 	_update_end_hand_button()
 	_update_card_status_ui()
 
@@ -1722,13 +1751,13 @@ func _update_card_status_ui() -> void:
 
 	var status_text := ""
 	if _skill_deck.is_shuffling:
-		status_text = "Shuffling deck..."
+		status_text = "Reshuffling the tome..."
 	elif _skill_deck.is_waiting_to_draw_after_shuffle:
-		status_text = "Preparing cards..."
+		status_text = "Inscribing runes..."
 	elif _is_dealing_hand:
-		status_text = "Drawing cards..."
+		status_text = "Drawing spells..."
 	elif _skill_deck.draw_pile_count() == 0:
-		status_text = "Deck empty"
+		status_text = "Tome exhausted"
 
 	_card_status_label.text = status_text
 	_card_status_label.visible = not status_text.is_empty()
